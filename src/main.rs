@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::Write;
+use std::process::exit;
 use std::process::Command;
+use std::str;
 
 pub fn write_x86_64_linux_nasm(file_name: String) {
     let mut file = File::create(file_name).unwrap(); // TODO: Handle the error gracefully.
@@ -24,20 +26,34 @@ pub fn write_x86_64_linux_nasm(file_name: String) {
     prl("    syscall");
 }
 
-fn call_cmd_echoed(args: Vec<&str>) {
+/// Runs a command, and echoes the command to sdtout.
+/// If the command fails, the output from stderr is returned and the program exits.
+fn run_cmd_echoed(args: Vec<&str>) {
     println!("{}", args.join(" "));
     let output = Command::new(args[0])
         .args(args[1..].iter())
         .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(0));
+        .expect("Command failed to execute");
+    let code = output.status.code();
+
+    if None == code {
+        println!("Command was terminated by a signal.");
+        println!("{}", str::from_utf8(&output.stderr).unwrap());
+        exit(1);
+    } else if let Some(c) = code {
+        if c != 0 {
+            println!("Command exited with status {}.", c);
+            println!("{}", str::from_utf8(&output.stderr).unwrap());
+            exit(1);
+        }
+    }
 }
 
 fn compile(project_name: &str) {
     println!("Generating {}.asm", project_name);
     write_x86_64_linux_nasm(format!("{}.asm", project_name));
 
-    call_cmd_echoed(vec![
+    run_cmd_echoed(vec![
         "nasm",
         "-f",
         "elf64",
@@ -46,7 +62,7 @@ fn compile(project_name: &str) {
         format!("{}.asm", project_name).as_str(),
     ]);
 
-    call_cmd_echoed(vec![
+    run_cmd_echoed(vec![
         "ld",
         format!("{}.o", project_name).as_str(),
         "-o",
