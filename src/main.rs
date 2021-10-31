@@ -69,6 +69,16 @@ fn compile(project_name: &str) {
     ]);
 }
 
+fn cleanup(project_name: &str, include_exe: bool) {
+    println!("Cleaning up files for {}", project_name);
+    run_cmd_echoed(vec!["rm", format!("{}.asm", project_name).as_str()]);
+    run_cmd_echoed(vec!["rm", format!("{}.o", project_name).as_str()]);
+    if include_exe {
+        run_cmd_echoed(vec!["rm", project_name]);
+    }
+}
+
 fn main() {
     compile("test");
+    cleanup("test", true);
 }
