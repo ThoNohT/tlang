@@ -5,7 +5,7 @@ if [ $1 = "build" ]; then
     cargo build
 elif [ $1 = "run" ]; then
     echo "Running"
-    cargo run
+    cargo run build test -r
 elif [ $1 = "test" ]; then
     echo "Running tests"
     echo "Not implemented yet."
