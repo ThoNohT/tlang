@@ -5,9 +5,8 @@ use std::process::Command;
 use std::str;
 
 pub fn write_x86_64_linux_nasm(file_name: String) {
-    let mut file = File::create(file_name).unwrap(); // TODO: Handle the error gracefully.
-
-    let mut prl = |line: &str| writeln!(&mut file, "{}", line).unwrap(); // TODO: Handle the error gracefully.
+    let mut file = File::create(file_name).expect("Failed to create the file.");
+    let mut prl = |line: &str| writeln!(&mut file, "{}", line).expect("Failed to write a line to the file.");
 
     prl("section .data");
     prl("    text db \"Hello, World!\", 10");
