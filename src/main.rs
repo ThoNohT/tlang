@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::remove_file;
 use std::fs::File;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::process::exit;
@@ -8,27 +9,28 @@ use std::process::Command;
 use std::str;
 
 pub fn asm_encode_string(str: &str) -> String {
-    let (_, in_str, r) =
-        str.chars()
-            .fold((true, false, "".to_string()), |(first, prev_in_str, acc), c| {
-                // 32 to 126 is printable.
-                let now_in_str = c as u32 >= 32 && c as u32 <= 126;
-                let sep = !first && ((!now_in_str) || (now_in_str && !prev_in_str));
-                let prefix = if sep { "," } else { "" };
-                let start_quote = if !prev_in_str && now_in_str { "\"" } else { "" };
-                let end_quote = if prev_in_str && !now_in_str { "\"" } else { "" };
-                let c_ = if now_in_str {
-                    c.to_string()
-                } else {
-                    format!(" {}", c as u32)
-                };
+    let (_, in_str, r) = str.chars().fold(
+        (true, false, "".to_string()),
+        |(first, prev_in_str, acc), c| {
+            // 32 to 126 is printable.
+            let now_in_str = c as u32 >= 32 && c as u32 <= 126;
+            let sep = !first && ((!now_in_str) || (now_in_str && !prev_in_str));
+            let prefix = if sep { "," } else { "" };
+            let start_quote = if !prev_in_str && now_in_str { "\"" } else { "" };
+            let end_quote = if prev_in_str && !now_in_str { "\"" } else { "" };
+            let c_ = if now_in_str {
+                c.to_string()
+            } else {
+                format!(" {}", c as u32)
+            };
 
-                return (
-                    false,
-                    now_in_str,
-                    format!("{}{}{}{}{}", acc, end_quote, prefix, start_quote, c_),
-                );
-            });
+            return (
+                false,
+                now_in_str,
+                format!("{}{}{}{}{}", acc, end_quote, prefix, start_quote, c_),
+            );
+        },
+    );
     return if in_str { format!("{}\"", r) } else { r };
 }
 
@@ -77,8 +79,12 @@ fn run_cmd_echoed(args: Vec<&str>) {
     }
 }
 
-fn parse_file(_file_name: &str) -> String {
-    return "Hello World!\n".to_string();
+fn parse_file(file_name: &str) -> String {
+    let mut file = File::open(file_name).expect("Failed to open input file.");
+    let mut buf: Vec<u8> = Vec::new();
+    file.read_to_end(&mut buf)
+        .expect("Failed reading input file.");
+    return String::from_utf8(buf).unwrap();
 }
 
 fn compile(project_name: &str) {
