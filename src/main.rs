@@ -98,30 +98,37 @@ fn cleanup(project_name: &str, include_exe: bool) {
 }
 
 /// Prints the usage string.
-fn print_usage() {
-    println!("Usage:");
+fn print_usage(compiler_name: &str) {
+    println!("Usage: {} <COMMAND> [OPTIONS]", compiler_name);
+    println!("  COMMAND:");
+    println!("    build <name>     Build the program with the specified name.");
+    println!("      OPTIONS:");
+    println!("        -r:            Run the program after compiling it.");
+    println!("    clean <name>     Clean the output for the program with the specified name.");
+    println!("      OPTIONS:");
+    println!("        -e:            Also cleanup the compiled executable.");
 }
 
 /// Checks a condition, and if it fails, shows an error with the usage details
 /// appended.
-fn test_condition_with_usage_error(condition: bool, error: &str) {
+fn test_condition_with_usage_error(compiler_name: &str, condition: bool, error: &str) {
     if condition {
         return;
     }
 
     println!("{}", error);
-    print_usage();
+    print_usage(compiler_name);
     exit(1);
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    test_condition_with_usage_error(args.len() >= 2, "Not enough arguments provided.");
+    test_condition_with_usage_error(&args[0], args.len() >= 2, "Not enough arguments provided.");
 
     let cmd = &args[1];
     match cmd.as_str() {
         "build" => {
-            test_condition_with_usage_error(args.len() >= 3, "Missing build target.");
+            test_condition_with_usage_error(&args[0], args.len() >= 3, "Missing build target.");
             let target = &args[2];
 
             let remaining = args[3..].to_vec();
@@ -135,7 +142,7 @@ fn main() {
             }
         }
         "clean" => {
-            test_condition_with_usage_error(args.len() >= 3, "Missing clean target.");
+            test_condition_with_usage_error(&args[0], args.len() >= 3, "Missing clean target.");
             let target = &args[2];
             let remaining = args[3..].to_vec();
             let include_exe = remaining.contains(&"-e".to_string());
@@ -143,7 +150,7 @@ fn main() {
         }
         _ => {
             println!("Unknown command: '{}'.", cmd);
-            print_usage();
+            print_usage(&args[0]);
             exit(1);
         }
     }
