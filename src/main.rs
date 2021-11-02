@@ -79,19 +79,19 @@ fn cleanup(project_name: &str, include_exe: bool) {
     println!("Cleaning up files for {}", project_name);
 
     let asm_file = format!("{}.asm", project_name);
-    if Path::new(asm_file.as_str()).exists() {
+    if Path::new(&asm_file).exists() {
         println!("Removing {}", asm_file);
         remove_file(asm_file).expect("Failed to remove file.");
     }
 
     let o_file = format!("{}.o", project_name);
-    if Path::new(o_file.as_str()).exists() {
+    if Path::new(&o_file).exists() {
         println!("Removing {}", o_file);
         remove_file(format!("{}", o_file).as_str()).expect("Failed to remove file.");
     }
 
     let exe_file = format!("{}", project_name);
-    if include_exe && Path::new(exe_file.as_str()).exists() {
+    if include_exe && Path::new(&exe_file).exists() {
         println!("Removing {}", exe_file);
         remove_file(exe_file).expect("Failed to remove file.");
     }
