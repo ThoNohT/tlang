@@ -7,28 +7,9 @@ use std::io::Write;
 use std::path::Path;
 use std::process::exit;
 use std::process::Command;
-use std::result;
 use std::str;
 
-pub enum Error {
-    Compile(String),
-    Parse(String),
-    Cleanup(String),
-    Generic(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
-        match &self {
-            Error::Compile(e) => fmt::Display::fmt(e, f),
-            Error::Parse(e) => fmt::Display::fmt(e, f),
-            Error::Cleanup(e) => fmt::Display::fmt(e, f),
-            Error::Generic(e) => fmt::Display::fmt(e, f),
-        }
-    }
-}
-
-type AppResult<T> = Result<T, Error>;
+type AppResult<T> = Result<T, String>;
 
 pub trait ReturnOnError<T, E> {
     // Exits the program when a result is an error.
@@ -85,10 +66,10 @@ pub fn asm_encode_string(str: &str) -> String {
 
 pub fn write_x86_64_linux_nasm(file_name: &str, program: String) -> AppResult<()> {
     let mut file = File::create(file_name)
-        .map_err(|_| Error::Compile("Failed to create the file.".to_string()))?;
+        .map_err(|_| "Failed to create the file.".to_string())?;
     let mut prl = |line: &str| {
         writeln!(&mut file, "{}", line)
-            .map_err(|_| Error::Compile("Failed to write a line to the file.".to_string()))
+            .map_err(|_| "Failed to write a line to the file.".to_string())
     };
 
     prl("section .data")?;
@@ -117,7 +98,7 @@ fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
     let output = Command::new(args[0])
         .args(args[1..].iter())
         .output()
-        .map_err(|e| Error::Generic(format!("{}", e)))?;
+        .map_err(|e| format!("{}", e))?;
     let code = output.status.code();
 
     if None == code {
@@ -137,12 +118,12 @@ fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
 
 fn parse_file(file_name: &str) -> AppResult<String> {
     let mut file = File::open(file_name)
-        .map_err(|_| Error::Parse("Failed to open input file.".to_string()))?;
+        .map_err(|_| "Failed to open input file.".to_string())?;
     let mut buf: Vec<u8> = Vec::new();
     file.read_to_end(&mut buf)
-        .map_err(|_| Error::Parse("Failed reading input file.".to_string()))?;
+        .map_err(|_| "Failed reading input file.".to_string())?;
     return String::from_utf8(buf)
-        .map_err(|_| Error::Parse("Unable to convert utf8 bytes into string.".to_string()));
+        .map_err(|_| "Unable to convert utf8 bytes into string.".to_string());
 }
 
 fn compile(project_name: &str) -> AppResult<()> {
@@ -178,20 +159,20 @@ fn cleanup(project_name: &str, include_exe: bool) -> AppResult<()> {
     let asm_file = format!("{}.asm", project_name);
     if Path::new(&asm_file).exists() {
         println!("Removing {}", asm_file);
-        remove_file(asm_file).map_err(|_| Error::Cleanup("Failed to remove file.".to_string()))?;
+        remove_file(asm_file).map_err(|_| "Failed to remove file.".to_string())?;
     }
 
     let o_file = format!("{}.o", project_name);
     if Path::new(&o_file).exists() {
         println!("Removing {}", o_file);
         remove_file(format!("{}", o_file).as_str())
-            .map_err(|_| Error::Cleanup("Failed to remove file.".to_string()))?;
+            .map_err(|_| "Failed to remove file.".to_string())?;
     }
 
     let exe_file = format!("{}", project_name);
     if include_exe && Path::new(&exe_file).exists() {
         println!("Removing {}", exe_file);
-        remove_file(exe_file).map_err(|_| Error::Cleanup("Failed to remove file.".to_string()))?;
+        remove_file(exe_file).map_err(|_| "Failed to remove file.".to_string())?;
     }
 
     return Ok(());
@@ -237,7 +218,7 @@ fn main() {
             if remaining.contains(&"-r".to_string()) {
                 Command::new(format!("./{}", target).as_str())
                     .spawn()
-                    .map_err(|e| Error::Compile(format!("{}", e)))
+                    .map_err(|e| format!("{}", e))
                     .handle_with_exit(Some("Failed to run compiled program."));
                 exit(0);
             }
