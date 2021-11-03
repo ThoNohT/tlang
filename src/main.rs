@@ -1,4 +1,5 @@
 use std::env;
+use std::fmt;
 use std::fs::remove_file;
 use std::fs::File;
 use std::io::Read;
@@ -6,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::exit;
 use std::process::Command;
+use std::result;
 use std::str;
 
 pub enum Error {
@@ -15,13 +17,13 @@ pub enum Error {
     Generic(String),
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
         match &self {
-            Error::Compile(e) => std::fmt::Display::fmt(e, f),
-            Error::Parse(e) => std::fmt::Display::fmt(e, f),
-            Error::Cleanup(e) => std::fmt::Display::fmt(e, f),
-            Error::Generic(e) => std::fmt::Display::fmt(e, f),
+            Error::Compile(e) => fmt::Display::fmt(e, f),
+            Error::Parse(e) => fmt::Display::fmt(e, f),
+            Error::Cleanup(e) => fmt::Display::fmt(e, f),
+            Error::Generic(e) => fmt::Display::fmt(e, f),
         }
     }
 }
@@ -36,7 +38,7 @@ pub trait ReturnOnError<T, E> {
 
 impl<T, E> ReturnOnError<T, E> for Result<T, E>
 where
-    E: std::fmt::Display,
+    E: fmt::Display,
 {
     fn handle_with_exit(self, additional_msg: Option<&str>) -> T {
         match self {
