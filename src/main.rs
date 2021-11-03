@@ -8,6 +8,53 @@ use std::process::exit;
 use std::process::Command;
 use std::str;
 
+pub enum Error {
+    Compile(String),
+    Parse(String),
+    Cleanup(String),
+    Generic(String),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match &self {
+            Error::Compile(e) => std::fmt::Display::fmt(e, f),
+            Error::Parse(e) => std::fmt::Display::fmt(e, f),
+            Error::Cleanup(e) => std::fmt::Display::fmt(e, f),
+            Error::Generic(e) => std::fmt::Display::fmt(e, f),
+        }
+    }
+}
+
+type AppResult<T> = Result<T, Error>;
+
+pub trait ReturnOnError<T, E> {
+    // Exits the program when a result is an error.
+    // Otherwise does nothing.
+    fn handle_with_exit(self, additional_msg: Option<&str>) -> T;
+}
+
+impl<T, E> ReturnOnError<T, E> for Result<T, E>
+where
+    E: std::fmt::Display,
+{
+    fn handle_with_exit(self, additional_msg: Option<&str>) -> T {
+        match self {
+            Err(e) => {
+                if let Some(msg) = additional_msg {
+                    eprintln!("{}", msg);
+                }
+                eprintln!("{}", e);
+
+                exit(1);
+            }
+            Ok(res) => {
+                return res;
+            }
+        }
+    }
+}
+
 pub fn asm_encode_string(str: &str) -> String {
     let (_, in_str, r) = str.chars().fold(
         (true, false, "".to_string()),
@@ -34,64 +81,73 @@ pub fn asm_encode_string(str: &str) -> String {
     return if in_str { format!("{}\"", r) } else { r };
 }
 
-pub fn write_x86_64_linux_nasm(file_name: &str, program: String) {
-    let mut file = File::create(file_name).expect("Failed to create the file.");
-    let mut prl =
-        |line: &str| writeln!(&mut file, "{}", line).expect("Failed to write a line to the file.");
+pub fn write_x86_64_linux_nasm(file_name: &str, program: String) -> AppResult<()> {
+    let mut file = File::create(file_name)
+        .map_err(|_| Error::Compile("Failed to create the file.".to_string()))?;
+    let mut prl = |line: &str| {
+        writeln!(&mut file, "{}", line)
+            .map_err(|_| Error::Compile("Failed to write a line to the file.".to_string()))
+    };
 
-    prl("section .data");
-    prl(format!("    text db {}", asm_encode_string(program.as_str())).as_str());
-    prl("");
-    prl("section .text");
-    prl("    global _start");
-    prl("_start:");
-    prl("    mov rax, 1");
-    prl("    mov rdi, 1");
-    prl("    mov rsi, text");
-    prl("    mov rdx, 14");
-    prl("    syscall");
-    prl("");
-    prl("    mov rax, 60");
-    prl("    mov rdi, 0");
-    prl("    syscall");
+    prl("section .data")?;
+    prl(format!("    text db {}", asm_encode_string(program.as_str())).as_str())?;
+    prl("")?;
+    prl("section .text")?;
+    prl("    global _start")?;
+    prl("_start:")?;
+    prl("    mov rax, 1")?;
+    prl("    mov rdi, 1")?;
+    prl("    mov rsi, text")?;
+    prl("    mov rdx, 14")?;
+    prl("    syscall")?;
+    prl("")?;
+    prl("    mov rax, 60")?;
+    prl("    mov rdi, 0")?;
+    prl("    syscall")?;
+
+    return Ok(());
 }
 
 /// Runs a command, and echoes the command to sdtout.
 /// If the command fails, the output from stderr is returned and the program exits.
-fn run_cmd_echoed(args: Vec<&str>) {
+fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
     println!("{}", args.join(" "));
     let output = Command::new(args[0])
         .args(args[1..].iter())
         .output()
-        .expect("Command failed to execute.");
+        .map_err(|e| Error::Generic(format!("{}", e)))?;
     let code = output.status.code();
 
     if None == code {
-        println!("Command was terminated by a signal.");
-        println!("{}", str::from_utf8(&output.stderr).unwrap());
+        eprintln!("Command was terminated by a signal.");
+        eprintln!("{}", str::from_utf8(&output.stderr).handle_with_exit(None));
         exit(1);
     } else if let Some(c) = code {
         if c != 0 {
-            println!("Command exited with status {}.", c);
-            println!("{}", str::from_utf8(&output.stderr).unwrap());
+            eprintln!("Command exited with status {}.", c);
+            eprintln!("{}", str::from_utf8(&output.stderr).handle_with_exit(None));
             exit(1);
         }
     }
+
+    return Ok(());
 }
 
-fn parse_file(file_name: &str) -> String {
-    let mut file = File::open(file_name).expect("Failed to open input file.");
+fn parse_file(file_name: &str) -> AppResult<String> {
+    let mut file = File::open(file_name)
+        .map_err(|_| Error::Parse("Failed to open input file.".to_string()))?;
     let mut buf: Vec<u8> = Vec::new();
     file.read_to_end(&mut buf)
-        .expect("Failed reading input file.");
-    return String::from_utf8(buf).unwrap();
+        .map_err(|_| Error::Parse("Failed reading input file.".to_string()))?;
+    return String::from_utf8(buf)
+        .map_err(|_| Error::Parse("Unable to convert utf8 bytes into string.".to_string()));
 }
 
-fn compile(project_name: &str) {
-    let program: String = parse_file(format!("{}.tl", project_name).as_str());
+fn compile(project_name: &str) -> AppResult<()> {
+    let program: String = parse_file(format!("{}.tl", project_name).as_str())?;
 
     println!("Generating {}.asm.", project_name);
-    write_x86_64_linux_nasm(format!("{}.asm", project_name).as_str(), program);
+    write_x86_64_linux_nasm(format!("{}.asm", project_name).as_str(), program)?;
 
     run_cmd_echoed(vec![
         "nasm",
@@ -100,38 +156,43 @@ fn compile(project_name: &str) {
         "-o",
         format!("{}.o", project_name).as_str(),
         format!("{}.asm", project_name).as_str(),
-    ]);
+    ])?;
 
     run_cmd_echoed(vec![
         "ld",
         format!("{}.o", project_name).as_str(),
         "-o",
         format!("{}", project_name).as_str(),
-    ]);
+    ])?;
+
+    return Ok(());
 }
 
 /// Cleans up the intermediary files created while compiling the program.
 /// If include_exe is true, then also the executable is cleaned up.
-fn cleanup(project_name: &str, include_exe: bool) {
+fn cleanup(project_name: &str, include_exe: bool) -> AppResult<()> {
     println!("Cleaning up files for {}", project_name);
 
     let asm_file = format!("{}.asm", project_name);
     if Path::new(&asm_file).exists() {
         println!("Removing {}", asm_file);
-        remove_file(asm_file).expect("Failed to remove file.");
+        remove_file(asm_file).map_err(|_| Error::Cleanup("Failed to remove file.".to_string()))?;
     }
 
     let o_file = format!("{}.o", project_name);
     if Path::new(&o_file).exists() {
         println!("Removing {}", o_file);
-        remove_file(format!("{}", o_file).as_str()).expect("Failed to remove file.");
+        remove_file(format!("{}", o_file).as_str())
+            .map_err(|_| Error::Cleanup("Failed to remove file.".to_string()))?;
     }
 
     let exe_file = format!("{}", project_name);
     if include_exe && Path::new(&exe_file).exists() {
         println!("Removing {}", exe_file);
-        remove_file(exe_file).expect("Failed to remove file.");
+        remove_file(exe_file).map_err(|_| Error::Cleanup("Failed to remove file.".to_string()))?;
     }
+
+    return Ok(());
 }
 
 /// Prints the usage string.
@@ -169,12 +230,13 @@ fn main() {
             let target = &args[2];
 
             let remaining = args[3..].to_vec();
-            compile(target);
+            compile(target).handle_with_exit(Some("Error while compiling."));
 
             if remaining.contains(&"-r".to_string()) {
                 Command::new(format!("./{}", target).as_str())
                     .spawn()
-                    .expect("Failed to run compiled program.");
+                    .map_err(|e| Error::Compile(format!("{}", e)))
+                    .handle_with_exit(Some("Failed to run compiled program."));
                 exit(0);
             }
         }
@@ -183,7 +245,7 @@ fn main() {
             let target = &args[2];
             let remaining = args[3..].to_vec();
             let include_exe = remaining.contains(&"-e".to_string());
-            cleanup(target, include_exe);
+            cleanup(target, include_exe).handle_with_exit(Some("Error while cleaning up."));
         }
         _ => {
             println!("Unknown command: '{}'.", cmd);
