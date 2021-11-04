@@ -65,8 +65,7 @@ pub fn asm_encode_string(str: &str) -> String {
 }
 
 pub fn write_x86_64_linux_nasm(file_name: &str, program: String) -> AppResult<()> {
-    let mut file = File::create(file_name)
-        .map_err(|_| "Failed to create the file.".to_string())?;
+    let mut file = File::create(file_name).map_err(|_| "Failed to create the file.".to_string())?;
     let mut prl = |line: &str| {
         writeln!(&mut file, "{}", line)
             .map_err(|_| "Failed to write a line to the file.".to_string())
@@ -116,9 +115,39 @@ fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
     return Ok(());
 }
 
+fn p_char() -> impl Fn(String) -> Option<(char, String)> {
+    |input| {
+        if input.is_empty() {
+            None
+        } else {
+            let (first, rest) = input.split_at(1);
+            Some((first.chars().next().unwrap(), rest.to_string()))
+        }
+    }
+}
+
+fn check<A: Copy>(
+    p: impl Fn(String) -> Option<(A, String)>,
+    check: impl Fn(A) -> bool,
+) -> impl Fn(String) -> Option<(A, String)> {
+    move |input| match p(input) {
+        Some((result, rest)) => {
+            if check(result) {
+                Some((result, rest))
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
+}
+
+fn p_schar(c: char) -> impl Fn(String) -> Option<(char, String)> {
+    check(p_char(), move |c_| c == c_)
+}
+
 fn parse_file(file_name: &str) -> AppResult<String> {
-    let mut file = File::open(file_name)
-        .map_err(|_| "Failed to open input file.".to_string())?;
+    let mut file = File::open(file_name).map_err(|_| "Failed to open input file.".to_string())?;
     let mut buf: Vec<u8> = Vec::new();
     file.read_to_end(&mut buf)
         .map_err(|_| "Failed reading input file.".to_string())?;
