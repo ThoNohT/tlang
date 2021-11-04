@@ -130,16 +130,7 @@ fn check<A: Copy>(
     p: impl Fn(String) -> Option<(A, String)>,
     check: impl Fn(A) -> bool,
 ) -> impl Fn(String) -> Option<(A, String)> {
-    move |input| match p(input) {
-        Some((result, rest)) => {
-            if check(result) {
-                Some((result, rest))
-            } else {
-                None
-            }
-        }
-        None => None,
-    }
+    move |input| p(input).filter(|(x, _)| check(*x))
 }
 
 fn p_schar(c: char) -> impl Fn(String) -> Option<(char, String)> {
