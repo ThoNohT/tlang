@@ -2,8 +2,8 @@ module tlang.Program
 
 open System
 open System.Diagnostics
-open Console
-open Compiler
+open tlang.Console
+open tlang.Compiler
 
 [<EntryPoint>]
 let main argv =

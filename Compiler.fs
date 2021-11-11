@@ -1,7 +1,7 @@
 module tlang.Compiler
 
 open System.IO
-open Console
+open tlang.Console
 
 /// Encodes a string so it can be included in assembly.
 let asmEncodeString (str: string) =
