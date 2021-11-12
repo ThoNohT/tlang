@@ -7,17 +7,48 @@ open System
 /// Converts a list of characters to a string.
 let private listToStr = Array.ofList >> (fun a -> new string (a))
 
+type Token = { Char: char ; Line: int ; Col: int }
+
+module Token =
+    /// Converts a token to a character.
+    let toChar (ic: Token) = ic.Char
+
+    /// Converts a list of tokens to a string.
+    let toString (ics: List<Token>) = List.map toChar ics |> listToStr
+
+    /// Turns a string into a list of Token, containing information about the line and column the characters are
+    /// located on.
+    let prepareString (str: String) =
+        let prepareLine lineNr line =
+            Seq.mapi (fun idx char -> { Char = char ; Line = lineNr + 1 ; Col = idx + 1 }) (Seq.append line [ '\n' ])
+
+        let rec dropLast =
+            function
+            | [] -> []
+            | [ _ ] -> []
+            | x :: xs -> x :: dropLast xs
+
+        if str = null then
+            []
+        else
+            str.Split ([| '\n' |], StringSplitOptions.None)
+            |> Seq.mapi prepareLine
+            |> Seq.concat
+            |> List.ofSeq
+            |> dropLast
+
+
 
 // ------ Parser type and builder -----
 
 /// The parser type.
-type Parser<'a> = Parser of (string -> Option<'a * string>)
+type Parser<'a> = Parser of (List<Token> -> Option<'a * List<Token>>)
 
 /// Runs a parser, getting the result and the remaining string.
-let runParser (Parser f) input = f input
+let runParser (Parser f) input = f <| input
 
 /// Runs a parser, returning only the result.
-let parse p input = runParser p input |> Option.map fst
+let parse p input = runParser p (Token.prepareString input) |> Option.map fst
 
 /// Bind operation on parsers.
 let bind (f: 'a -> Parser<'b>) (Parser p) =
@@ -33,7 +64,7 @@ let succeed x = Parser (fun input -> Some (x, input))
 let fail () = Parser (fun _ -> None)
 
 /// Creates a parser that consumes all input.
-let all = Parser (fun input -> Some (input, ""))
+let all = Parser (fun input -> Some (Token.toString input, []))
 
 type ParserBuilder () =
     member _.Bind ((a: Parser<_>), f) = bind f a
@@ -80,7 +111,7 @@ let andThen combine p1 p2 =
     parser {
         let! res1 = p1
         let! res2 = p2
-        return combine p2 p1
+        return combine res2 res1
     }
 
 /// Performs two parsers in order, but ignores the result of the second.
@@ -143,7 +174,7 @@ let optional p = alt (map Some p) (succeed None)
 let pChar: Parser<char> =
     Parser (fun input ->
         match Seq.toList input with
-        | x :: xs -> Some (x, listToStr xs)
+        | x :: xs -> Some (Token.toChar x, xs)
         | _ -> None)
 
 /// A parser that parses a character only if it is numeric.
@@ -163,7 +194,8 @@ let litC c = check ((=) c) pChar
 
 /// Returns a parser that parses a literal string.
 let lit (str: string) =
-    Parser (fun input -> if input.StartsWith str then Some (str, input.Substring (str.Length)) else None)
+    Parser (fun input ->
+        if (Token.toString input).StartsWith str then Some (str, List.skip str.Length input) else None)
 
 /// A parser that fails if there is more input to consume, and succeeds otherwise.
 let eoi = inv pChar
@@ -172,7 +204,7 @@ let eoi = inv pChar
 let eol = litC '\n'
 
 /// Modifies a parser to fail if it is not followed by the end of a line.
-let line p = skipNext p eol
+let line p = skipNext p (alt (map ignore eol) eoi)
 
 /// Returns a parser that applies a parser one or more times, but takes a separator parser in between every occurrence.
 let separated separator p = sequence (fun x xs -> x :: xs) p (star (skipPrev separator p))
@@ -188,19 +220,19 @@ let stringOf p =
         return listToStr result
     }
 
-let stringOfLength length p =
-    parser {
-        let! result = times length p
-        return listToStr result
-
-    }
-
 /// Returns a parser that parses a string composed from the result of the specified parser, as long as the parser
 /// succeeds. If the parser never succeeds, an empty string is returned.
 let stringOf_ p =
     parser {
         let! result = star p
         return listToStr result
+    }
+
+let stringOfLength length p =
+    parser {
+        let! result = times length p
+        return listToStr result
+
     }
 
 /// Returns a parser that consumes one character at a time, as long as the condition on the character is positive.
@@ -227,8 +259,8 @@ let digit =
         return! parseInt (listToStr [ d ])
     }
 
-/// A parser that parses a positive integer.
-let positiveInt =
+/// A parser that parses a non-negative integer.
+let nonNegativeInt =
     parser {
         let! ds = stringOf num
         return! parseInt ds
