@@ -15,7 +15,7 @@
                 "isDefault": true
             },
             "presentation": {
-                "reveal": "silent"
+                "reveal": "always"
             },
             "problemMatcher": "$msCompile"
         },
@@ -26,7 +26,18 @@
             "args": [ "run" ],
             "group": "build",
             "presentation": {
-                "reveal": "silent"
+                "reveal": "always"
+            },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "test",
+            "command": "dotnet",
+            "type": "shell",
+            "args": [ "run", "test" ],
+            "group": "build",
+            "presentation": {
+                "reveal": "always"
             },
             "problemMatcher": "$msCompile"
         }

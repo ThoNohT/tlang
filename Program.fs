@@ -19,10 +19,10 @@ let main argv =
         let target = args.[1]
         let remaining = args.[2..]
 
-        handleError "Error while compiling." (fun _ -> compile target)
+        let exeFile = handleError "Error while compiling." (fun _ -> compile target)
 
         if List.contains "-r" remaining then
-            handleError "Failed to run compiled program." (fun _ -> ignore <| Process.Start ($"./{target}"))
+            handleError "Failed to run compiled program." (fun _ -> ignore <| Process.Start ($"./{exeFile}"))
 
     | "clean" ->
         testConditionWithUsageError compilerName (List.length args >= 2) "Missing clean target."
@@ -31,6 +31,10 @@ let main argv =
         let includeExe = List.contains "-e" remaining
 
         handleError "Error while cleaning up." (fun _ -> cleanup target includeExe)
+
+    | "test" ->
+        let success = Test.Run.runTests ()
+        Environment.Exit success
 
     | _ ->
         printErr <| sprintf "Unknown command: '%s'." cmd
