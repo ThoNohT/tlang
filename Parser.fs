@@ -271,7 +271,7 @@ let eoi =
         | _ -> Ok ((), ParseState.update state [] []))
 
 /// A parser that parses the end of a line. The end of the input is also considered the end of a line.
-let eol = alt eoi (map (fun _ -> ()) (litC '\n'))
+let eol = alt eoi (map (fun _ -> ()) (litC '\n')) |> mapError (fun _ -> "Expected end of line")
 
 /// Modifies a parser to fail if it is not followed by the end of a line.
 let line p = skipNext p (alt (map ignore eol) eoi)
@@ -315,6 +315,11 @@ let takeWhile condition = stringOf (check condition pChar)
 /// If the condition is never positive, an empty string is returned.
 let takeWhile_ condition = stringOf_ (check condition pChar)
 
+/// A parser that consumes a space character.
+let space = litC ' '
+
+/// A parser that consumes any whitespace character.
+let ws = check Char.IsWhiteSpace pChar
 
 // ----- Int parsers -----
 
@@ -338,34 +343,128 @@ let nonNegativeInt =
         return! parseInt ds
     }
 
-/// The different types of programs that can be defined.
-type ProgramType =
+type Statement =
+    | Subroutine of string * string
+    | Call of string
+
+module Statement =
+    let subroutine =
+        function
+        | ((Subroutine _) as s) -> Some s
+        | _ -> None
+
+    let call =
+        function
+        | ((Call _) as c) -> Some c
+        | _ -> None
+
+    let name =
+        function
+        | Subroutine (name, _) -> name
+        | Call name -> name
+
+    let value =
+        function
+        | (Subroutine (_, value)) -> value
+        | _ -> ""
+
+
+type Program = Program of List<Statement>
+
+module Program =
+    let subroutines (Program stmts) = List.choose Statement.subroutine stmts
+    let calls (Program stmts) = List.choose Statement.call stmts
+    let statements (Program stmts) = stmts
+
+let pIdentifier =
+    parser {
+        let! first = alpha |> mapError (fun _ -> "Expected name of identifier to start with a letter.")
+        let! rest = stringOf_ alphaNum
+        return sprintf "%c%s" first rest
+    }
+
+/// A parser that parses a full line, and also consumes the newline.
+let pFullLine = skipNext (takeWhile_ ((<>) '\n')) (litC '\n')
+
+
+let dump (Parser p) =
+    Parser (fun state ->
+        match p state with
+        | Ok (result, state) ->
+            printfn "%A" result
+            printfn "%A" state
+            Ok (result, state)
+        | Error e ->
+            printfn "%A" e
+            Error e)
+
+/// Takes a parser, but expects 2 spaces before it.
+let indented p =
+    parser {
+        let! _ = lit "  "
+        return! p
+    }
+
+/// A parser for a subroutine. Must be the name of the subroutine, followed by a colon.
+/// Then on the lines below, indented by 2 characters, the text to display for this routine.
+let pSubroutine =
+    parser {
+        let! name = pIdentifier |> mapError (fun e -> sprintf "Error parsing subroutine: %s" e)
+        let! _ = litC ':'
+        let! _ = star space
+        do! eol
+        let! str = plus <| indented pFullLine
+        return Subroutine (name, String.concat "\n" str)
+    }
+    |> mapError (fun e -> sprintf "Subroutine parser failed: %s" e)
+
+
+/// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
+let pCall =
+    parser {
+        let! name = pIdentifier |> mapError (fun e -> sprintf "Error parsing call: %s" e)
+        let! _ = star space
+        do! eol
+        return Call name
+    }
+    |> mapError (fun e -> sprintf "Call parser failed: %s" e)
+
+let pStatement = alt pSubroutine pCall
+
+let pProgram =
+    let emptyLine = skipPrev (star (check ((<>) '\n') ws)) (litC '\n') |> map ignore
+    let between = star emptyLine
+    map Program <| separated between pStatement
+
+/// The different types of projects that can be defined.
+type ProjectType =
     /// An executable gets compiled into an executable file and cannot be referenced.
     /// The parameter is the name of the executable.
     | Executable of string
 
 
-/// A complete program parsed from a file.
-type Program = { Type: ProgramType ; Value: String }
+/// A complete project parsed from a file.
+type Project = { Type: ProjectType ; Program: Program }
 
-/// A parser for program types.
-let pProgramType =
+/// A parser for project types.
+let pProjectType =
     parser {
         let! _ = lit "Executable: "
-        let! first = alpha |> mapError (fun _ -> "Expected name of program to start with a letter.")
+        let! first = alpha |> mapError (fun _ -> "Expected name of project to start with a letter.")
         let! rest = stringOf_ alphaNum
         return Executable (sprintf "%c%s" first rest)
     }
 
-/// A parser for a program. A program is defined as:
+/// A parser for a project. A project is defined as:
 /// Line 1: The type,
 /// Line 2: A separator of at least one '-',
-/// The rest: The value to print out.
-let pProgram =
+/// The rest: The program
+let pProject =
     parser {
-        let! typ = line pProgramType |> mapError (fun e -> sprintf "Unable to parse program type: %s" e)
+        let! typ = line pProjectType |> mapError (fun e -> sprintf "Unable to parse project type: %s" e)
         let! _ = plus (litC '-') |> line |> mapError (fun _ -> "Expected a separator of a line of '-' characters.")
-        let! value = all
+        let! prog = pProgram
+        do! eoi
 
-        return { Type = typ ; Value = value }
+        return { Type = typ ; Program = prog }
     }
