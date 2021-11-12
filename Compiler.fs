@@ -74,13 +74,14 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     for call in Program.calls project.Program do
         writeStatement wl call
 
-    for sr in Program.subroutines project.Program do
-        writeStatement wl sr
-
     // Start of exit call.
     wl "    mov rax, 60"
     wl "    mov rdi, 0"
     wl "    syscall"
+
+    for sr in Program.subroutines project.Program do
+        writeStatement wl sr
+
 
     writer.Close ()
 
