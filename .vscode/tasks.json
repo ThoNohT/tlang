@@ -37,7 +37,8 @@
             "args": [ "run", "test" ],
             "group": "build",
             "presentation": {
-                "reveal": "always"
+                "reveal": "always",
+                "focus": true
             },
             "problemMatcher": "$msCompile"
         }

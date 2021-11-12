@@ -11,28 +11,25 @@ let private listToStr = Array.ofList >> (fun a -> new string (a))
 type Position = { Line: int ; Col: int }
 
 module Position =
-    let zero = { Line = 0 ; Col = 0 }
+    let zero = { Line = 1 ; Col = 1 }
 
     let toString pos = sprintf "Line %i, col %i" pos.Line pos.Col
 
 /// One token, consisting of a character with a position.
 type Token = { Char: char ; Pos: Position }
 
-/// The current state before parsing. The position is equal to that of the first token in the list of tokens.
-/// But may be useful if there are no tokens left and an error has to be reported. In this case the position is that
-/// of the last token that was parsed.
+/// The current state before parsing. The position is equal to that of the last token that was consumed. If no tokens
+/// were consumed yet, it is at 1, 1.
 type ParseState = { CurPos: Position ; Input: List<Token> }
 
 module ParseState =
-    /// Updates the current position of the state given the new input. If there are tokens left, the first token
-    /// decides the position, otherwise the last consumed token determines the position. If no tokens were consumed,
-    /// the position doesn't change.
+    /// Updates the state with new remaining tokens, and updates the current position to that of the last token that
+    /// was consumed. If no tokens were consumed, the position is not updated.
     let update state remaining consumed =
         let newState = { state with Input = remaining }
 
-        match newState.Input, List.tryLast consumed with
-        | x :: _, _ -> { newState with CurPos = x.Pos }
-        | [], Some last -> { newState with CurPos = last.Pos }
+        match List.tryLast consumed with
+        | Some last -> { newState with CurPos = last.Pos }
         | _ -> newState
 
 
