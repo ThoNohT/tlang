@@ -11,7 +11,7 @@ let private listToStr = Array.ofList >> (fun a -> new string (a))
 type Position = { Line: int ; Col: int }
 
 module Position =
-    let zero = { Line = 1 ; Col = 1 }
+    let zero = { Line = 1 ; Col = 0 }
 
     let toString pos = sprintf "Line %i, col %i" pos.Line pos.Col
 
@@ -76,8 +76,13 @@ module Token =
 type ParseError = { Pos: Position ; Message: string }
 
 module ParseError =
-    /// Create a parse error from the specified state with the specified message.
-    let make state msg : Result<_, ParseError> = Error { Pos = state.CurPos ; Message = msg }
+    /// Create a parse error from the specified position with the specified message. Use this one if the parser fails
+    /// due to a consumed token, providing the token's position.
+    let make pos msg : Result<_, ParseError> = Error { Pos = pos ; Message = msg }
+
+    /// Create a parse error from the specified state with the specified message. Use this one if there is no more input
+    /// causing a parser to fail. Or the failure is not directly related to a token.
+    let make_ state msg : Result<_, ParseError> = Error { Pos = state.CurPos ; Message = msg }
 
 /// The parser type.
 type Parser<'a> = Parser of (ParseState -> Result<'a * ParseState, ParseError>)
@@ -99,7 +104,7 @@ let bind (f: 'a -> Parser<'b>) (Parser p) =
 let succeed x = Parser (fun state -> Ok (x, state))
 
 /// Creates a parser that always fails.
-let fail () = Parser (fun state -> ParseError.make state "Fail parser failed.")
+let fail () = Parser (fun state -> ParseError.make_ state "Fail parser failed.")
 
 /// Creates a parser that consumes all input.
 let all = Parser (fun state -> Ok (Token.toString state.Input, ParseState.update state [] state.Input))
@@ -118,12 +123,16 @@ let parser = new ParserBuilder ()
 
 // ----- Combinators -----
 
+let dbg a =
+    printfn "%A" a
+    a
+
 /// Changes a parser to fail if it succeeded, and succeed with unit without consuming input if it failed.
 let inv (Parser p) =
     Parser (fun state ->
         match p state with
         | Error _ -> Ok ((), state)
-        | _ -> ParseError.make state "Inv parser failed.")
+        | _ -> ParseError.make_ state "Inv parser failed.")
 
 /// Performs a parser, and succeeds if it succeeds, but returns nothing and consumes no input.
 let peek p = inv p |> inv
@@ -183,7 +192,7 @@ let alt (Parser p1) (Parser p2) =
         | Error e1 ->
             match p2 state with
             | Ok r -> Ok r
-            | Error e2 -> ParseError.make state (sprintf "Alternative parsers failed:\n%s\n%s" e1.Message e2.Message))
+            | Error e2 -> ParseError.make e2.Pos (sprintf "Alternative parsers failed:\n%s\n%s" e1.Message e2.Message))
 
 /// Tries each of the specified parsers in order.
 let rec oneOf =
@@ -220,7 +229,7 @@ let pChar: Parser<char> =
     Parser (fun state ->
         match Seq.toList state.Input with
         | x :: xs -> Ok (Token.toChar x, ParseState.update state xs [ x ])
-        | _ -> ParseError.make state "Expected a character, but got end of input")
+        | _ -> ParseError.make_ state "Expected a character, but got end of input")
 
 /// A parser that parses a character only if it is numeric.
 let num = check Char.IsDigit pChar
@@ -244,13 +253,18 @@ let lit (str: string) =
             let consumed = List.take str.Length state.Input
             Ok (str, ParseState.update state (List.skip str.Length state.Input) consumed)
         else
-            ParseError.make state <| sprintf "Expected the string '%s'" str)
+            let pos = List.tryHead state.Input |> Option.map Token.pos |> Option.defaultValue state.CurPos
+            ParseError.make pos <| sprintf "Expected the string '%s'" str)
 
 /// A parser that fails if there is more input to consume, and succeeds otherwise.
-let eoi = inv pChar
+let eoi =
+    Parser (fun state ->
+        match Seq.toList state.Input with
+        | x :: _ -> ParseError.make x.Pos <| sprintf "Expected end of input, but got '%c'" x.Char
+        | _ -> Ok ((), ParseState.update state [] []))
 
-/// A parser that parses the end of a line.
-let eol = litC '\n'
+/// A parser that parses the end of a line. The end of the input is also considered the end of a line.
+let eol = alt eoi (map (fun _ -> ()) (litC '\n'))
 
 /// Modifies a parser to fail if it is not followed by the end of a line.
 let line p = skipNext p (alt (map ignore eol) eoi)
