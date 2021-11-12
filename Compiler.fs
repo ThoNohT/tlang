@@ -36,7 +36,7 @@ let write_x86_64_LinuxNasm fileName (program: Program) =
     wl "    mov rax, 1"
     wl "    mov rdi, 1"
     wl "    mov rsi, text"
-    wl "    mov rdx, 14"
+    wl <| sprintf "    mov rdx, %i" (String.length program.Value)
     wl "    syscall"
     wl ""
     wl "    mov rax, 60"
