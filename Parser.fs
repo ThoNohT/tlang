@@ -32,6 +32,9 @@ let succeed x = Parser (fun input -> Some (x, input))
 /// Creates a parser that always fails.
 let fail () = Parser (fun _ -> None)
 
+/// Creates a parser that consumes all input.
+let all = Parser (fun input -> Some (input, ""))
+
 type ParserBuilder () =
     member _.Bind ((a: Parser<_>), f) = bind f a
     member _.Return x = succeed x
@@ -47,14 +50,14 @@ let parser = new ParserBuilder ()
 // ----- Combinators -----
 
 /// Changes a parser to fail if it succeeded, and succeed with unit without consuming input if it failed.
-let not (Parser p) =
+let inv (Parser p) =
     Parser (fun input ->
         match p input with
         | None -> Some ((), input)
         | _ -> None)
 
 /// Performs a parser, and succeeds if it succeeds, but returns nothing and consumes no input.
-let peek p = not p |> not
+let peek p = inv p |> inv
 
 /// Changes a parser to fail if the provided check on it's succesful result fails.
 let check f p =
@@ -163,7 +166,13 @@ let lit (str: string) =
     Parser (fun input -> if input.StartsWith str then Some (str, input.Substring (str.Length)) else None)
 
 /// A parser that fails if there is more input to consume, and succeeds otherwise.
-let endOfInput = not pChar
+let eoi = inv pChar
+
+/// A parser that parses the end of a line.
+let eol = litC '\n'
+
+/// Modifies a parser to fail if it is not followed by the end of a line.
+let line p = skipNext p eol
 
 /// Returns a parser that applies a parser one or more times, but takes a separator parser in between every occurrence.
 let separated separator p = sequence (fun x xs -> x :: xs) p (star (skipPrev separator p))
@@ -223,4 +232,36 @@ let positiveInt =
     parser {
         let! ds = stringOf num
         return! parseInt ds
+    }
+
+/// The different types of programs that can be defined.
+type ProgramType =
+    /// An executable gets compiled into an executable file and cannot be referenced.
+    /// The parameter is the name of the executable.
+    | Executable of string
+
+
+/// A complete program parsed from a file.
+type Program = { Type: ProgramType ; Value: String }
+
+/// A parser for program types.
+let pProgramType =
+    parser {
+        let! _ = lit "Executable: "
+        let! first = alpha
+        let! rest = stringOf_ alphaNum
+        return Executable (sprintf "%c%s" first rest)
+    }
+
+/// A parser for a program. A program is defined as:
+/// Line 1: The type,
+/// Line 2: A separator of at least one '-',
+/// The rest: The value to print out.
+let pProgram =
+    parser {
+        let! typ = line pProgramType
+        let! _ = line <| plus (litC '-')
+        let! value = all
+
+        return { Type = typ ; Value = value }
     }

@@ -2,6 +2,7 @@ module tlang.Compiler
 
 open System.IO
 open tlang.Console
+open tlang.Parser
 
 /// Encodes a string so it can be included in assembly.
 let asmEncodeString (str: string) =
@@ -20,13 +21,13 @@ let asmEncodeString (str: string) =
     if inStr then sprintf "%s\"" r else r
 
 /// Writes the program to x86_64 linux assembly for Nasm.
-let write_x86_64_LinuxNasm fileName program =
+let write_x86_64_LinuxNasm fileName (program: Program) =
     let writer = new StreamWriter (fileName, false)
 
     let wl (str: string) = writer.WriteLine str
 
     wl "section .data"
-    wl <| sprintf "    text db %s" (asmEncodeString program)
+    wl <| sprintf "    text db %s" (asmEncodeString program.Value)
     wl ""
     wl "section .text"
     wl "    global _start"
@@ -43,38 +44,49 @@ let write_x86_64_LinuxNasm fileName program =
 
     writer.Close ()
 
-/// Compiles the project with the specified name.
-/// reads projectName.tl, and compiles it to projectName executable.
-let compile projectName =
-    let program = File.ReadAllText (sprintf "%s.tl" projectName)
+/// Parses an input file to a Program.
+let parseProgram inputFile =
+    File.ReadAllText inputFile
+    |> parse pProgram
+    |> Option.orElseWith (fun _ -> failwith "Unable to parse program")
+    |> Option.get
 
-    let asmFile = sprintf "%s.asm" projectName
-    let oFile = sprintf "%s.o" projectName
-    let exeFile = sprintf "%s" projectName
+/// Compiles the program from the specified file.
+let compile inputFile =
+    let program = parseProgram inputFile
+    let (Executable programName) = program.Type
+
+    let asmFile = sprintf "%s.asm" programName
+    let oFile = sprintf "%s.o" programName
+    let exeFile = sprintf "%s" programName
 
     printfn "Generating %s" asmFile
-    write_x86_64_LinuxNasm (sprintf "%s.asm" projectName) program
+    write_x86_64_LinuxNasm (sprintf "%s.asm" programName) program
 
     runCmdEchoed [ "nasm" ; "-f" ; "elf64" ; "-o" ; oFile ; asmFile ]
 
     runCmdEchoed [ "ld" ; oFile ; "-o" ; exeFile ]
 
-let cleanup projectName includeExe =
-    printfn "Cleaning up files for %s" projectName
+/// Cleans up files for the program from the specified file.
+let cleanup inputFile includeExe =
+    let program = parseProgram inputFile
+    let (Executable programName) = program.Type
 
-    let asmFile = sprintf "%s.asm" projectName
+    printfn "Cleaning up files for %s" programName
+
+    let asmFile = sprintf "%s.asm" programName
 
     if File.Exists asmFile then
         printfn "Removing %s" asmFile
         File.Delete asmFile
 
-    let oFile = sprintf "%s.o" projectName
+    let oFile = sprintf "%s.o" programName
 
     if File.Exists oFile then
         printfn "Removing %s" oFile
         File.Delete oFile
 
-    let exeFile = sprintf "%s" projectName
+    let exeFile = sprintf "%s" programName
 
     if includeExe && File.Exists exeFile then
         printfn "Removing %s" exeFile
