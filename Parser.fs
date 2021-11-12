@@ -109,6 +109,13 @@ let fail () = Parser (fun state -> ParseError.make_ state "Fail parser failed.")
 /// Creates a parser that consumes all input.
 let all = Parser (fun state -> Ok (Token.toString state.Input, ParseState.update state [] state.Input))
 
+/// Changes a parser, such that if it fails, the error message is altered using the provided function.
+let mapError (f: string -> string) (Parser p) =
+    Parser (fun state ->
+        match p state with
+        | Ok r -> Ok r
+        | Error e -> Error { e with Message = f e.Message })
+
 type ParserBuilder () =
     member _.Bind ((a: Parser<_>), f) = bind f a
     member _.Return x = succeed x
@@ -141,7 +148,7 @@ let peek p = inv p |> inv
 let check f p =
     parser {
         let! res = p
-        return! if f res then succeed res else fail ()
+        return! if f res then succeed res else fail () |> mapError (fun _ -> "Check failed.")
     }
 
 /// Performs 2 parsers in sequence, and combines them with the provided function.
@@ -229,7 +236,7 @@ let pChar: Parser<char> =
     Parser (fun state ->
         match Seq.toList state.Input with
         | x :: xs -> Ok (Token.toChar x, ParseState.update state xs [ x ])
-        | _ -> ParseError.make_ state "Expected a character, but got end of input")
+        | _ -> ParseError.make_ state "Expected a character, but got end of input.")
 
 /// A parser that parses a character only if it is numeric.
 let num = check Char.IsDigit pChar
@@ -254,13 +261,13 @@ let lit (str: string) =
             Ok (str, ParseState.update state (List.skip str.Length state.Input) consumed)
         else
             let pos = List.tryHead state.Input |> Option.map Token.pos |> Option.defaultValue state.CurPos
-            ParseError.make pos <| sprintf "Expected the string '%s'" str)
+            ParseError.make pos <| sprintf "Expected the string '%s'." str)
 
 /// A parser that fails if there is more input to consume, and succeeds otherwise.
 let eoi =
     Parser (fun state ->
         match Seq.toList state.Input with
-        | x :: _ -> ParseError.make x.Pos <| sprintf "Expected end of input, but got '%c'" x.Char
+        | x :: _ -> ParseError.make x.Pos <| sprintf "Expected end of input, but got '%c'." x.Char
         | _ -> Ok ((), ParseState.update state [] []))
 
 /// A parser that parses the end of a line. The end of the input is also considered the end of a line.
@@ -345,7 +352,7 @@ type Program = { Type: ProgramType ; Value: String }
 let pProgramType =
     parser {
         let! _ = lit "Executable: "
-        let! first = alpha
+        let! first = alpha |> mapError (fun _ -> "Expected name of program to start with a letter.")
         let! rest = stringOf_ alphaNum
         return Executable (sprintf "%c%s" first rest)
     }
@@ -356,8 +363,8 @@ let pProgramType =
 /// The rest: The value to print out.
 let pProgram =
     parser {
-        let! typ = line pProgramType
-        let! _ = line <| plus (litC '-')
+        let! typ = line pProgramType |> mapError (fun e -> sprintf "Unable to parse program type: %s" e)
+        let! _ = plus (litC '-') |> line |> mapError (fun _ -> "Expected a separator of a line of '-' characters.")
         let! value = all
 
         return { Type = typ ; Value = value }
