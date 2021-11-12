@@ -35,6 +35,7 @@ let printUsage compilerName =
     printfn "    clean <name>     Clean the output for the program with the specified name."
     printfn "      OPTIONS:"
     printfn "        -e:            Also cleanup the compiled executable."
+    printfn "    test             Run internal unit tests."
     Environment.Exit 1
 
 /// Checks a condition, and if it fails, displays the specified error, prints the usage string
@@ -56,3 +57,4 @@ let handleError failureMsg action =
         printErr failureMsg
         printErr e.Message
         Environment.Exit 1
+        failwith "unreachable"

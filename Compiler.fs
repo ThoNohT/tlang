@@ -52,6 +52,7 @@ let parseProgram inputFile =
     |> Option.get
 
 /// Compiles the program from the specified file.
+/// Returns the name of the generated executable.
 let compile inputFile =
     let program = parseProgram inputFile
     let (Executable programName) = program.Type
@@ -66,6 +67,8 @@ let compile inputFile =
     runCmdEchoed [ "nasm" ; "-f" ; "elf64" ; "-o" ; oFile ; asmFile ]
 
     runCmdEchoed [ "ld" ; oFile ; "-o" ; exeFile ]
+
+    exeFile
 
 /// Cleans up files for the program from the specified file.
 let cleanup inputFile includeExe =
