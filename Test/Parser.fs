@@ -1,18 +1,22 @@
 module tlang.Test.Parser
 
-open System
 open Fuchu
 
 module P = tlang.Parser
 
 let assertSuccessWith p input result remaining =
     match P.runParser p (P.Token.prepareString input) with
-    | None -> Test.Fail "Expected the parser to succeed."
-    | Some (res, rest) ->
+    | Error e ->
+        Test.Fail
+        <| sprintf "Expected the parser to succeed, but got error %s at %s." e.Message (P.Position.toString e.Pos)
+    | Ok (res, state) ->
         Assert.Equal ("Wrong result.", result, res)
-        Assert.Equal ("Wrong remaining.", remaining, P.Token.toString rest)
+        Assert.Equal ("Wrong remaining.", remaining, P.Token.toString state.Input)
 
-let assertFailure p input = Assert.None ("Expected the parser to fail.", P.parse p input)
+let assertFailure p input =
+    match P.parse p input with
+    | Error _ -> ()
+    | _ -> Test.Fail "Expected the parser to fail."
 
 let assertFailures p inputs =
     for input in inputs do

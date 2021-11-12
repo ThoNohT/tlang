@@ -7,7 +7,34 @@ open System
 /// Converts a list of characters to a string.
 let private listToStr = Array.ofList >> (fun a -> new string (a))
 
-type Token = { Char: char ; Line: int ; Col: int }
+/// A position in the input.
+type Position = { Line: int ; Col: int }
+
+module Position =
+    let zero = { Line = 0 ; Col = 0 }
+
+    let toString pos = sprintf "Line %i, col %i" pos.Line pos.Col
+
+/// One token, consisting of a character with a position.
+type Token = { Char: char ; Pos: Position }
+
+/// The current state before parsing. The position is equal to that of the first token in the list of tokens.
+/// But may be useful if there are no tokens left and an error has to be reported. In this case the position is that
+/// of the last token that was parsed.
+type ParseState = { CurPos: Position ; Input: List<Token> }
+
+module ParseState =
+    /// Updates the current position of the state given the new input. If there are tokens left, the first token
+    /// decides the position, otherwise the last consumed token determines the position. If no tokens were consumed,
+    /// the position doesn't change.
+    let update state remaining consumed =
+        let newState = { state with Input = remaining }
+
+        match newState.Input, List.tryLast consumed with
+        | x :: _, _ -> { newState with CurPos = x.Pos }
+        | [], Some last -> { newState with CurPos = last.Pos }
+        | _ -> newState
+
 
 module Token =
     /// Converts a token to a character.
@@ -16,12 +43,18 @@ module Token =
     /// Converts a list of tokens to a string.
     let toString (ics: List<Token>) = List.map toChar ics |> listToStr
 
+    /// Returns the position of a token.
+    let pos { Pos = pos } = pos
+
     /// Turns a string into a list of Token, containing information about the line and column the characters are
     /// located on.
-    let prepareString (str: String) =
+    let prepareString (str: String) : ParseState =
         let prepareLine lineNr line =
-            Seq.mapi (fun idx char -> { Char = char ; Line = lineNr + 1 ; Col = idx + 1 }) (Seq.append line [ '\n' ])
+            Seq.mapi
+                (fun idx char -> { Char = char ; Pos = { Line = lineNr + 1 ; Col = idx + 1 } })
+                (Seq.append line [ '\n' ])
 
+        // Drop the last element of a list.
         let rec dropLast =
             function
             | [] -> []
@@ -29,42 +62,50 @@ module Token =
             | x :: xs -> x :: dropLast xs
 
         if str = null then
-            []
+            { CurPos = Position.zero ; Input = [] }
         else
-            str.Split ([| '\n' |], StringSplitOptions.None)
-            |> Seq.mapi prepareLine
-            |> Seq.concat
-            |> List.ofSeq
-            |> dropLast
+            { CurPos = Position.zero
+              Input =
+                str.Split ([| '\n' |], StringSplitOptions.None)
+                |> Seq.mapi prepareLine
+                |> Seq.concat
+                |> List.ofSeq
+                |> dropLast }
 
 
 
 // ------ Parser type and builder -----
 
+type ParseError = { Pos: Position ; Message: string }
+
+module ParseError =
+    /// Create a parse error from the specified state with the specified message.
+    let make state msg : Result<_, ParseError> = Error { Pos = state.CurPos ; Message = msg }
+
 /// The parser type.
-type Parser<'a> = Parser of (List<Token> -> Option<'a * List<Token>>)
+type Parser<'a> = Parser of (ParseState -> Result<'a * ParseState, ParseError>)
 
 /// Runs a parser, getting the result and the remaining string.
 let runParser (Parser f) input = f <| input
 
 /// Runs a parser, returning only the result.
-let parse p input = runParser p (Token.prepareString input) |> Option.map fst
+let parse p input = runParser p (Token.prepareString input) |> Result.map fst
 
 /// Bind operation on parsers.
 let bind (f: 'a -> Parser<'b>) (Parser p) =
-    Parser (fun input ->
-        match p input with
-        | None -> None
-        | Some (res1, rest1) -> runParser (f res1) rest1)
+    Parser (fun state ->
+        match p state with
+        | Error e -> Error e
+        | Ok (res1, rest1) -> runParser (f res1) rest1)
 
-/// Creates a parser that always returns the specified input.
-let succeed x = Parser (fun input -> Some (x, input))
+/// Creates a parser that always returns the specified input and doesn't consume anything.
+let succeed x = Parser (fun state -> Ok (x, state))
 
 /// Creates a parser that always fails.
-let fail () = Parser (fun _ -> None)
+let fail () = Parser (fun state -> ParseError.make state "Fail parser failed.")
 
 /// Creates a parser that consumes all input.
-let all = Parser (fun input -> Some (Token.toString input, []))
+let all = Parser (fun state -> Ok (Token.toString state.Input, ParseState.update state [] state.Input))
 
 type ParserBuilder () =
     member _.Bind ((a: Parser<_>), f) = bind f a
@@ -82,10 +123,10 @@ let parser = new ParserBuilder ()
 
 /// Changes a parser to fail if it succeeded, and succeed with unit without consuming input if it failed.
 let inv (Parser p) =
-    Parser (fun input ->
-        match p input with
-        | None -> Some ((), input)
-        | _ -> None)
+    Parser (fun state ->
+        match p state with
+        | Error _ -> Ok ((), state)
+        | _ -> ParseError.make state "Inv parser failed.")
 
 /// Performs a parser, and succeeds if it succeeds, but returns nothing and consumes no input.
 let peek p = inv p |> inv
@@ -138,7 +179,14 @@ let map f p =
 
 /// Combines two parsers by trying to apply the first one first, and if it fails, applying the second one to the same
 /// input. Fails if both parsers fail.
-let alt (Parser p1) (Parser p2) = Parser (fun input -> Option.orElseWith (fun _ -> p2 input) (p1 input))
+let alt (Parser p1) (Parser p2) =
+    Parser (fun state ->
+        match p1 state with
+        | Ok r -> Ok r
+        | Error e1 ->
+            match p2 state with
+            | Ok r -> Ok r
+            | Error e2 -> ParseError.make state (sprintf "Alternative parsers failed:\n%s\n%s" e1.Message e2.Message))
 
 /// Tries each of the specified parsers in order.
 let rec oneOf =
@@ -172,10 +220,10 @@ let optional p = alt (map Some p) (succeed None)
 
 /// A parser that parses a single character, or fails when the input is empty.
 let pChar: Parser<char> =
-    Parser (fun input ->
-        match Seq.toList input with
-        | x :: xs -> Some (Token.toChar x, xs)
-        | _ -> None)
+    Parser (fun state ->
+        match Seq.toList state.Input with
+        | x :: xs -> Ok (Token.toChar x, ParseState.update state xs [ x ])
+        | _ -> ParseError.make state "Expected a character, but got end of input")
 
 /// A parser that parses a character only if it is numeric.
 let num = check Char.IsDigit pChar
@@ -194,8 +242,12 @@ let litC c = check ((=) c) pChar
 
 /// Returns a parser that parses a literal string.
 let lit (str: string) =
-    Parser (fun input ->
-        if (Token.toString input).StartsWith str then Some (str, List.skip str.Length input) else None)
+    Parser (fun state ->
+        if (Token.toString state.Input).StartsWith str then
+            let consumed = List.take str.Length state.Input
+            Ok (str, ParseState.update state (List.skip str.Length state.Input) consumed)
+        else
+            ParseError.make state <| sprintf "Expected the string '%s'" str)
 
 /// A parser that fails if there is more input to consume, and succeeds otherwise.
 let eoi = inv pChar
@@ -228,6 +280,8 @@ let stringOf_ p =
         return listToStr result
     }
 
+/// Returns a parser that parses a string composed from the result of the specified parser, as long as it matches
+/// at least the specified number of times. More matches are ignored, fewer matches result in failure.
 let stringOfLength length p =
     parser {
         let! result = times length p

@@ -1,5 +1,6 @@
 module tlang.Compiler
 
+open System
 open System.IO
 open tlang.Console
 open tlang.Parser
@@ -46,10 +47,16 @@ let write_x86_64_LinuxNasm fileName (program: Program) =
 
 /// Parses an input file to a Program.
 let parseProgram inputFile =
-    File.ReadAllText inputFile
-    |> parse pProgram
-    |> Option.orElseWith (fun _ -> failwith "Unable to parse program")
-    |> Option.get
+    let parseResult = File.ReadAllText inputFile |> parse pProgram
+
+    match parseResult with
+    | Error e ->
+        printErr <| sprintf "Parse error at %s" (Position.toString e.Pos)
+        printErr <| sprintf "Error message: %s" e.Message
+        Environment.Exit 1
+        failwith "unreachable"
+
+    | Ok prog -> prog
 
 /// Compiles the program from the specified file.
 /// Returns the name of the generated executable.
