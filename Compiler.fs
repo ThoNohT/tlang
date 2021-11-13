@@ -5,6 +5,7 @@ open System.IO
 open tlang.Console
 open tlang.Parser
 open tlang.Project
+open tlang.Checker
 
 module Syscall =
     let idReg = "rax"
@@ -48,7 +49,6 @@ let writeStatement wl =
         wl ""
     | Call name ->
         wl <| sprintf "    call _%s" name
-        wl ""
 
 /// Writes the project to x86_64 linux assembly for Nasm.
 let write_x86_64_LinuxNasm fileName (project: Project) =
@@ -70,19 +70,23 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     wl ""
     wl "_start:"
     wl ""
+    wl "    ;  Entry point."
 
     // Program statements.
     for call in Program.calls project.Program do
         writeStatement wl call
 
-    // Start of exit call.
+    wl ""
+    wl "    ; Exit call."
     wl "    mov rax, 60"
     wl "    mov rdi, 0"
     wl "    syscall"
+    wl ""
+    wl "    ; Subroutines."
 
-    for sr in Program.subroutines project.Program do
+    for sr in Program.usedSubroutines project.Program do
+        printfn "Writing Subroutine %s" (Statement.name sr)
         writeStatement wl sr
-
 
     writer.Close ()
 
@@ -105,15 +109,25 @@ let compile inputFile =
     let project = parseProject inputFile
     let (Executable projectName) = project.Type
 
+    /// Check for issues.
+    let issues = check project
+    if not <| List.isEmpty issues then printfn "Issues found:\n"
+    for issue in issues do eprintfn "%s" (CheckIssue.toString issue)
+    if List.exists CheckIssue.isError issues then Environment.Exit 1
+
+    /// Determine file names.
     let asmFile = sprintf "%s.asm" projectName
     let oFile = sprintf "%s.o" projectName
     let exeFile = sprintf "%s" projectName
 
+    /// Write nasm.
     printfn "Generating %s" asmFile
     write_x86_64_LinuxNasm (sprintf "%s.asm" projectName) project
 
+    /// Compile nasm.
     runCmdEchoed [ "nasm" ; "-f" ; "elf64" ; "-o" ; oFile ; asmFile ]
 
+    /// Link file.
     runCmdEchoed [ "ld" ; oFile ; "-o" ; exeFile ]
 
     exeFile

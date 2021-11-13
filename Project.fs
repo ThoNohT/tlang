@@ -63,6 +63,10 @@ module Program =
     let calls (Program stmts) = List.choose Statement.call stmts
     let statements (Program stmts) = stmts
 
+    /// Returns all subroutines that are actually called.
+    let usedSubroutines program =
+        let callNames = calls program |> List.map Statement.name |> Set.ofList
+        subroutines program |> List.filter (fun stmt -> Set.contains (Statement.name stmt) callNames)
 
     let parser =
         let emptyLine = skipPrev (star (check ((<>) '\n') ws)) (litC '\n') |> map ignore
