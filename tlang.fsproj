@@ -6,6 +6,7 @@
   <ItemGroup>
     <Compile Include="Console.fs" />
     <Compile Include="Parser.fs" />
+    <Compile Include="Project.fs" />
     <Compile Include="Compiler.fs" />
     <Compile Include="Test/Parser.fs" />
     <Compile Include="Test/Run.fs" />

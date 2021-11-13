@@ -4,6 +4,7 @@ open System
 open System.IO
 open tlang.Console
 open tlang.Parser
+open tlang.Project
 
 module Syscall =
     let idReg = "rax"
@@ -87,7 +88,7 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
 
 /// Parses an input file to a Project.
 let parseProject inputFile =
-    let parseResult = File.ReadAllText inputFile |> parse pProject
+    let parseResult = File.ReadAllText inputFile |> parse Project.parser
 
     match parseResult with
     | Error e ->
