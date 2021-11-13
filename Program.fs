@@ -4,6 +4,7 @@ open System
 open System.Diagnostics
 open tlang.Console
 open tlang.Compiler
+open System.IO
 
 [<EntryPoint>]
 let main argv =
@@ -22,7 +23,9 @@ let main argv =
         let exeFile = handleError "Error while compiling." (fun _ -> compile target)
 
         if List.contains "-r" remaining then
-            handleError "Failed to run compiled program." (fun _ -> ignore <| Process.Start ($"./{exeFile}"))
+            let wd = Directory.GetCurrentDirectory()
+            printfn "%s" <| Path.Combine (wd, exeFile)
+            handleError "Failed to run compiled program." (fun _ -> ignore <| Process.Start (Path.Combine (wd, exeFile)))
 
     | "clean" ->
         testConditionWithUsageError compilerName (List.length args >= 2) "Missing clean target."
