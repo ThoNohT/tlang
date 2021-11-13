@@ -9,7 +9,6 @@ type CheckIssue =
     /// A warning that indicates a possible problem, but doesn't prevent compilation.
     | CheckWarning of string
 
-
 module CheckIssue =
     /// Indicates whether an issue is an error that prevents compilation.
     let isError = function

@@ -70,7 +70,6 @@ module Token =
                 |> dropLast }
 
 
-
 // ------ Parser type and builder -----
 
 type ParseError = { Pos: Position ; Message: string }
@@ -190,6 +189,13 @@ let map f p =
         return f res
     }
 
+/// A parser that applies all parsers in sequence, ignoring all their results. Fails if one of the parsers fails.
+let rec ignoreAll =
+    function
+    | [ x ] -> map ignore x
+    | x :: xs -> sequence (fun _ _ -> ()) x (ignoreAll xs)
+    | _ -> succeed ()
+
 /// Combines two parsers by trying to apply the first one first, and if it fails, applying the second one to the same
 /// input. Fails if both parsers fail.
 let alt (Parser p1) (Parser p2) =
@@ -273,6 +279,9 @@ let eoi =
 /// A parser that parses the end of a line. The end of the input is also considered the end of a line.
 let eol = alt eoi (map (fun _ -> ()) (litC '\n')) |> mapError (fun _ -> "Expected end of line")
 
+/// A parser that parses only an end of line character.
+let eolNoEoi = litC '\n'
+
 /// Modifies a parser to fail if it is not followed by the end of a line.
 let line p = skipNext p (alt (map ignore eol) eoi)
 
@@ -304,7 +313,6 @@ let stringOfLength length p =
     parser {
         let! result = times length p
         return listToStr result
-
     }
 
 /// Returns a parser that consumes one character at a time, as long as the condition on the character is positive.
@@ -320,6 +328,9 @@ let space = litC ' '
 
 /// A parser that consumes any whitespace character.
 let ws = check Char.IsWhiteSpace pChar
+
+/// A parser that consumes whitespace except the end of line character.
+let wsNoEol = check ((<>) '\n') ws
 
 // ----- Int parsers -----
 
@@ -374,3 +385,6 @@ let indented p =
         let! _ = lit "  "
         return! p
     }
+
+/// Ignores the result of a parser.
+let ( ~~ ) (p: Parser<_>) = map ignore p

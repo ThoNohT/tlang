@@ -104,7 +104,8 @@ module Project =
             let! typ = line ProjectType.parser |> mapError (fun e -> sprintf "Unable to parse project type: %s" e)
             let! _ = plus (litC '-') |> line |> mapError (fun _ -> "Expected a separator of a line of '-' characters.")
             let! prog = Program.parser
-            do! eoi
+            do! ~~ (star <| ignoreAll [ ~~ (star wsNoEol) ; ~~ eolNoEoi ])
+            do! ignoreAll [ ~~ (star wsNoEol) ; ~~ eoi ]
 
             return { Type = typ ; Program = prog }
         }
