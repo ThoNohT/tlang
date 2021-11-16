@@ -22,7 +22,7 @@ type ParseState = { CurPos: Position ; Input: List<string> }
 module ParseState =
     /// Creates a ParseState from an input string, turning the string into lines, and initializing the position.
     let prepareString (str: String) : ParseState =
-        if str = null then
+        if str = null || str = "" then
             { CurPos = Position.zero ; Input = [] }
         else
             { CurPos = Position.zero
@@ -37,7 +37,8 @@ module ParseState =
     let remainingInput (state: ParseState) =
         let input = state.Input
         let pos = state.CurPos
-        input.[pos.Line].Substring (pos.Col) :: input.[pos.Line + 1..] |> String.concat "\n"
+        if pos.Line >= List.length input then ""
+        else input.[pos.Line].Substring (pos.Col) :: input.[pos.Line + 1..] |> String.concat "\n"
 
     /// Advances the state to the next character, and returns this character, or None if there are no more
     /// characters to return.
@@ -69,20 +70,20 @@ module ParseResult =
     /// Creates a failed parse result from the specified parser, with the specified state and message.
     let failure label (s: ParseState) msg : ParseResult<_> = Failure (label, msg, s.CurPos)
 
-    let success result newState = Success (result, newState)
+    let success result state = Success (result, state)
 
     let result =
         function
         | Failure _ -> None
         | Success (r, _) -> Some r
 
-    let newStaaate =
+    let newState =
         function
         | Failure _ -> None
         | Success (_, s) -> Some s
 
     /// Returns the specified parse result if it is a success, or else the second parse result.
-    let orElse (r1: ParseResult<_>) (r2: unit -> ParseResult<_>) =
+    let orElse (r2: unit -> ParseResult<_>) (r1: ParseResult<_>) =
         match r1 with
         | Success (r, s) -> Success (r, s)
         | _ -> r2 ()
@@ -251,7 +252,7 @@ let (~~) (p: Parser<_>) = map ignore p
 /// input. Fails if both parsers fail.
 let alt (p1: Parser<_>) (p2: Parser<_>) =
     { Label = sprintf "(%s) alt (%s)" p1.Label p2.Label
-      Run = fun state -> ParseResult.orElse (p1.Run state) (fun () -> p2.Run state) }
+      Run = fun state -> ParseResult.orElse (fun () -> p2.Run state) (p1.Run state) }
 
 /// Tries each of the specified parsers in order.
 let rec oneOf (ps: List<Parser<_>>) = List.reduce alt ps
@@ -259,12 +260,10 @@ let rec oneOf (ps: List<Parser<_>>) = List.reduce alt ps
 /// Tail recursive helper to run a parser zero or more times.
 /// Doesn't accept a parse result that hasn't consumed input (running the same parser multiple times without consuming
 /// input is a guaranteed infinite loop).
-/// Returns the list of successful parse results in reverse, and the state after the first time the parser failed or
-/// consumed no input.
 let rec private parseZeroOrMore acc p s =
     match p.Run s with
     | Success (r, s') when s.CurPos <> s'.CurPos -> parseZeroOrMore (r :: acc) p s'
-    | _ -> acc, s
+    | _ -> List.rev acc, s
 
 /// Returns a parser which runs the specified parser zero or more times.
 /// Also stops if the parser succeeds but consumes no more input, in this case, the parse result is not included.
@@ -273,7 +272,7 @@ let star p =
       Run =
         fun s ->
             let r, s' = parseZeroOrMore [] p s
-            Success (List.rev r, s') }
+            Success (r, s') }
 
 /// Returns a parser which runs the specified parser one or more times.
 let plus p =
@@ -287,7 +286,7 @@ let plus p =
 /// Tail recursive helper to run a parser exactly a specified number of times.
 let rec private matchExactly acc n p s =
     match n with
-    | 0 -> ParseResult.success acc s
+    | 0 -> ParseResult.success (List.rev acc) s
     | n ->
         match p.Run s with
         | Success (r, s') -> matchExactly (r :: acc) (n - 1) p s'
@@ -314,7 +313,7 @@ let separated sep p = alt (separated1 sep p) (succeed [])
 /// Succeeds only if all parsers in the list succeed.
 let rec private sequenceHelper acc ps s =
     match ps with
-    | [] -> ParseResult.success acc s
+    | [] -> ParseResult.success (List.rev acc) s
     | p :: ps' ->
         match p.Run s with
         | Success (r, s') -> sequenceHelper (r :: acc) ps' s'
