@@ -92,16 +92,17 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
 
 /// Parses an input file to a Project.
 let parseProject inputFile =
-    let parseResult = File.ReadAllText inputFile |> parse Project.parser
+    let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> Parser.runParser Project.parser
 
     match parseResult with
-    | Error e ->
-        printErr <| sprintf "Parse error at %s" (Position.toString e.Pos)
-        printErr <| sprintf "Error message: %s" e.Message
+    | Failure (l, m, p) ->
+        printErr <| sprintf "Parser %s failed." l
+        printErr <| sprintf "Parse error at %s" (Position.toString p)
+        printErr <| sprintf "Error message: %s" m
         Environment.Exit 1
         failwith "unreachable"
 
-    | Ok prog -> prog
+    | Success (prog, _) -> prog
 
 /// Compiles the project from the specified file.
 /// Returns the name of the generated executable.

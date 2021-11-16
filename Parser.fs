@@ -31,7 +31,13 @@ module ParseState =
     /// Returns the contents of the line that is currently being parsed. If all input has been consumed,
     /// then the text 'End of input' is returned.
     let currentLine (state: ParseState) =
-        if state.CurPos.Col < List.length state.Input then state.Input.[state.CurPos.Col] else "End of input"
+        if state.CurPos.Line < List.length state.Input then state.Input.[state.CurPos.Line] else "End of input"
+
+    /// Returns the remaining input that is still to be consumed in the parse state.
+    let remainingInput (state: ParseState) =
+        let input = state.Input
+        let pos = state.CurPos
+        input.[pos.Line].Substring (pos.Col) :: input.[pos.Line + 1..] |> String.concat "\n"
 
     /// Advances the state to the next character, and returns this character, or None if there are no more
     /// characters to return.
@@ -85,7 +91,7 @@ module ParseResult =
 type Parser<'a> = { Run: ParseState -> ParseResult<'a> ; Label: ParserLabel }
 
 module Parser =
-    /// Runs a parser, getting the result and the remaining string.
+    /// Runs a parser, getting the result and the remaining input.
     let runParser (p: Parser<_>) = p.Run
 
     /// Runs a parser, returning only the result.
@@ -147,13 +153,15 @@ let dump (p: Parser<_>) =
         fun state ->
             match p.Run state with
             | Success (r, s) ->
-                printfn "%A" r
-                printfn "%A" s
+                printfn "Success"
+                printfn "Result:    %A" r
+                printfn "Remaining: %A" s
                 Success (r, s)
             | Failure (l, m, p) ->
-                printfn "%s" l
-                printfn "%s" m
-                printfn "%A" p
+                printfn "Failure"
+                printfn "Label:     %s" l
+                printfn "Message:   %s" m
+                printfn "Position:  %A" p
                 Failure (l, m, p) }
 
 /// Performs a parser, and succeeds if it succeeds, but consumes no input.
@@ -180,6 +188,17 @@ let satisfy f label =
                 else
                     ParseResult.failure label state <| sprintf "Unexpected '%c'" ch }
 
+/// Runs a check on the result of a parser, and fails if the check fails.
+let check f p =
+    let label = sprintf "check %s" p.Label
+
+    { Label = label
+      Run =
+        fun state ->
+            match p.Run state with
+            | Failure (l, m, p) -> Failure (l, m, p)
+            | Success (r, s') when f r -> Success (r, s')
+            | Success (r, _) -> ParseResult.failure label state (sprintf "Unexpected %A" r) }
 
 /// Performs 2 parsers in sequence, and combines them with the provided function.
 let combine f p1 p2 =
@@ -188,7 +207,7 @@ let combine f p1 p2 =
         let! res2 = p2
         return f res1 res2
     }
-    |> Parser.setLabel (sprintf "(%s) sequence (%s)" p1.Label p2.Label)
+    |> Parser.setLabel (sprintf "(%s) combine (%s)" p1.Label p2.Label)
 
 /// The sequence parser except the order of the parsers is reversed.
 /// This can be used when piping the result of one parser into another parser, since the pipe operator places the result
@@ -257,7 +276,7 @@ let star p =
             Success (List.rev r, s') }
 
 /// Returns a parser which runs the specified parser one or more times.
-let rec plus p =
+let plus p =
     parser {
         let! first = p
         let! rest = star p
@@ -275,7 +294,7 @@ let rec private matchExactly acc n p s =
         | Failure (l, m, p) -> Failure (l, m, p)
 
 /// Returns a parser which runs the specified parser exactly n times.
-let rec times n p = { Label = sprintf "times %s" p.Label ; Run = fun state -> matchExactly [] n p state }
+let times n p = { Label = sprintf "times %s" p.Label ; Run = fun state -> matchExactly [] n p state }
 
 /// Returns a parser which runs the specified parser zero times or once.
 let optional p = alt (map Some p) (succeed None) |> Parser.setLabel (sprintf "optional %s" p.Label)
@@ -290,6 +309,18 @@ let separated1 sep p =
 
 /// Separated1, but allows 0 matches of the parser.
 let separated sep p = alt (separated1 sep p) (succeed [])
+
+/// Tail recursive helper that applies multiple parsers in sequence and returns the result as a list.
+/// Succeeds only if all parsers in the list succeed.
+let rec private sequenceHelper acc ps s =
+    match ps with
+    | [] -> ParseResult.success acc s
+    | p :: ps' ->
+        match p.Run s with
+        | Success (r, s') -> sequenceHelper (r :: acc) ps' s'
+        | Failure (l, m, p) -> Failure (l, m, p)
+
+let sequence ps = { Label = sprintf "sequence %A" (List.map (fun p -> p.Label) ps) ; Run = sequenceHelper [] ps }
 
 
 // ----- Character parsers -----
@@ -332,21 +363,14 @@ let space = litC ' ' |> Parser.setLabel "space"
 /// A parser that consumes any whitespace character.
 let ws = satisfy Char.IsWhiteSpace "ws"
 
+/// A parser that consumes any whitespace character except a newline.
+let wsNoEol = satisfy (fun c -> Char.IsWhiteSpace c && c <> '\n' && c <> '\r') "wsNoEol"
+
 
 // ----- String parsers -----
 
-/// Tail recursive helper that applies multiple parsers in sequence and returns the result as a list.
-/// Succeeds only if all parsers in the list succeed.
-let rec private sequence acc ps s =
-    match ps with
-    | [] -> ParseResult.success acc s
-    | p :: ps' ->
-        match p.Run s with
-        | Success (r, s') -> sequence (r :: acc) ps' s'
-        | Failure (l, m, p) -> Failure (l, m, p)
-
 /// Returns a parser that parses a literal string.
-let lit (str: string) = { Label = str ; Run = str |> List.ofSeq |> List.map litC |> sequence [] }
+let lit (str: string) = str |> List.ofSeq |> List.map litC |> sequence |> map listToStr |> Parser.setLabel str
 
 /// Modifies a parser to fail if it is not followed by the end of a line.
 let line p = skipNext p eol |> Parser.setLabel (sprintf "line %s" p.Label)
@@ -426,4 +450,3 @@ let nonNegativeInt =
         return! parseInt ds
     }
     |> Parser.setLabel "nonNegativeInt"
-

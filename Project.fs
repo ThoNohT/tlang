@@ -13,7 +13,9 @@ let indented n p =
     }
     |> Parser.setLabel (sprintf "%i indented %s" n p.Label)
 
-/// Parses an identifier. 
+let trailingWhitespace = ~~(skipPrev (star space) eol)
+
+/// Parses an identifier.
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
 
 type Statement =
@@ -27,25 +29,20 @@ module Statement =
         /// Then on the lines below, indented by 2 characters, the text to display for this routine.
         let pSubroutine =
             parser {
-                let! name = pIdentifier |> mapError (fun e -> sprintf "Error parsing subroutine: %s" e)
+                let! name = pIdentifier |> Parser.setLabel "subroutine name"
                 let! _ = litC ':'
-                let! _ = star space
-                do! eol
-                let! str = plus <| indented pFullLine
+                do! trailingWhitespace
+                let! str = plus (indented 2 pFullLine) |> Parser.setLabel "subroutine contents"
                 return Subroutine (name, String.concat "\n" str)
             }
-            |> mapError (fun e -> sprintf "Subroutine parser failed: %s" e)
-
 
         /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
         let pCall =
             parser {
-                let! name = pIdentifier |> mapError (fun e -> sprintf "Error parsing call: %s" e)
-                let! _ = star space
-                do! eol
+                let! name = pIdentifier |> Parser.setLabel "call name"
+                do! trailingWhitespace
                 return Call name
             }
-            |> mapError (fun e -> sprintf "Call parser failed: %s" e)
 
         alt pSubroutine pCall
 
@@ -83,9 +80,9 @@ module Program =
         subroutines program |> List.filter (fun stmt -> Set.contains (Statement.name stmt) callNames)
 
     let parser =
-        let emptyLine = skipPrev (star (check ((<>) '\n') ws)) (litC '\n') |> map ignore
+        let emptyLine = skipPrev (star wsNoEol) eol
         let between = star emptyLine
-        map Program <| separated between Statement.parser
+        separated between Statement.parser |> map Program |> Parser.setLabel "program"
 
 
 /// The different types of projects that can be defined.
@@ -99,9 +96,8 @@ module ProjectType =
     let parser =
         parser {
             let! _ = lit "Executable: "
-            let! first = alpha |> mapError (fun _ -> "Expected name of project to start with a letter.")
-            let! rest = stringOf_ alphaNum
-            return Executable (sprintf "%c%s" first rest)
+            let! name = pIdentifier |> Parser.setLabel "project name"
+            return Executable name
         }
 
 
@@ -115,11 +111,11 @@ module Project =
     /// The rest: The program
     let parser =
         parser {
-            let! typ = line ProjectType.parser |> mapError (fun e -> sprintf "Unable to parse project type: %s" e)
-            let! _ = plus (litC '-') |> line |> mapError (fun _ -> "Expected a separator of a line of '-' characters.")
+            let! typ = line ProjectType.parser |> Parser.setLabel "project type"
+            let! _ = plus (litC '-') |> line |> Parser.setLabel "separator"
             let! prog = Program.parser
-            do! ~~ (star <| ignoreAll [ ~~ (star wsNoEol) ; ~~ eolNoEoi ])
-            do! ignoreAll [ ~~ (star wsNoEol) ; ~~ eoi ]
+            do! ~~ (star <| skipNext (star wsNoEol) eol )
+            do! eoi
 
             return { Type = typ ; Program = prog }
         }
