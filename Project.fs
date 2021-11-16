@@ -2,6 +2,20 @@ module tlang.Project
 
 open tlang.Parser
 
+/// A parser that parses a full line, and also consumes the newline.
+let pFullLine = skipNext (takeWhile ((<>) '\n')) (litC '\n')
+
+/// Takes a parser, but expects n spaces before it.
+let indented n p =
+    parser {
+        let! _ = times n space
+        return! p
+    }
+    |> Parser.setLabel (sprintf "%i indented %s" n p.Label)
+
+/// Parses an identifier. 
+let pIdentifier = stringOf2 alpha alphaNum "identifier"
+
 type Statement =
     | Subroutine of string * string
     | Call of string
