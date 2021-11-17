@@ -6,8 +6,8 @@ module P = tlang.Parser
 
 let assertSuccessWith p input result remaining line col =
     match P.Parser.runParser p (P.ParseState.prepareString input) with
-    | P.Failure (l, m, p) ->
-        Test.Fail <| sprintf "Expected the parser to succeed, but got error %s: %s at %s." l m (P.Position.toString p)
+    | P.Failure (l, m, s) ->
+        Test.Fail <| sprintf "Expected the parser to succeed, but got error %s: %s at %s." l m (P.Position.toString s.CurPos)
     | P.Success (res, state) ->
         Assert.Equal ("Wrong result.", result, res)
         Assert.Equal ("Wrong remaining.", remaining, P.ParseState.remainingInput state)
@@ -16,9 +16,9 @@ let assertSuccessWith p input result remaining line col =
 
 let assertFailureAt p input line col =
     match P.Parser.runParser p (P.ParseState.prepareString input) with
-    | P.Failure (_, _, p) ->
-        Assert.Equal ("Wrong line.", line, p.Line)
-        Assert.Equal ("Wrong column.", col, p.Col)
+    | P.Failure (_, _, s) ->
+        Assert.Equal ("Wrong line.", line, s.CurPos.Line)
+        Assert.Equal ("Wrong column.", col, s.CurPos.Col)
     | _ -> Test.Fail "Expected the parser to fail."
 
 let assertFailuresAt p inputs line col =

@@ -64,11 +64,11 @@ type ErrorMessage = string
 
 type ParseResult<'a> =
     | Success of 'a * ParseState
-    | Failure of ParserLabel * ErrorMessage * Position
+    | Failure of ParserLabel * ErrorMessage * ParseState
 
 module ParseResult =
     /// Creates a failed parse result from the specified parser, with the specified state and message.
-    let failure label (s: ParseState) msg : ParseResult<_> = Failure (label, msg, s.CurPos)
+    let failure label (s: ParseState) msg : ParseResult<_> = Failure (label, msg, s)
 
     let success result state = Success (result, state)
 
@@ -87,6 +87,14 @@ module ParseResult =
         match r1 with
         | Success (r, s) -> Success (r, s)
         | _ -> r2 ()
+
+    /// Displays an error message about what failed, where, given the contents of a failed parse result.
+    let showError (label: ParserLabel) (message: ErrorMessage) (state: ParseState) =
+        let failedMsg = sprintf "Parsing %s failed." label
+        let positionMsg = sprintf "at %i:%i:" (state.CurPos.Line + 1) (state.CurPos.Col + 1)
+        let currentLine =   ParseState.currentLine state
+        let lineMarker = "^".PadLeft (state.CurPos.Col + 1)
+        String.concat "\n" [ failedMsg ; positionMsg ; message ; currentLine ; lineMarker ]
 
 /// The parser type.
 type Parser<'a> = { Run: ParseState -> ParseResult<'a> ; Label: ParserLabel }

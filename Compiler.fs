@@ -95,10 +95,8 @@ let parseProject inputFile =
     let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> Parser.runParser Project.parser
 
     match parseResult with
-    | Failure (l, m, p) ->
-        printErr <| sprintf "Parser %s failed." l
-        printErr <| sprintf "Parse error at %s" (Position.toString p)
-        printErr <| sprintf "Error message: %s" m
+    | Failure (l, m, s) ->
+        printErr <| ParseResult.showError l m s
         Environment.Exit 1
         failwith "unreachable"
 
