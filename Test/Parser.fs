@@ -25,6 +25,16 @@ let assertFailuresAt p inputs line col =
     for input in inputs do
         assertFailureAt p input line col
 
+let assertfailureWithState (p: P.Parser<_>) input f =
+  match P.Parser.runParser p (P.ParseState.prepareString input) with
+  | P.Failure (_, _, s) -> f s
+  | _ -> Test.Fail "Expected the parser to fail."
+
+let assertSuccessWithState (p: P.Parser<_>) input f =
+  match P.Parser.runParser p (P.ParseState.prepareString input) with
+  | P.Success (_, s) -> f s
+  | _ -> Test.Fail "Expected the parser to succeed."
+  
 let parserTests =
     testList
         "Parser"
@@ -190,6 +200,31 @@ let intParserTests =
           testCase "nonNegativeInt succeeds for zero" <| fun _ -> assertSuccessWith P.nonNegativeInt "0ab" 0 "ab" 0 1
           testCase "nonNegativeInt fails for a negative int" <| fun _ -> assertFailureAt P.nonNegativeInt "-123ab" 0 0 ]
 
+let assertCommitted (s: P.ParseState) = Assert.Equal ("Expected the state to be committed.", true, s.Committed)
+let assertUncommitted (s: P.ParseState) = Assert.Equal ("Expected the state to be uncommitted.", false, s.Committed)
+
+let commitTests =
+    testList 
+      "Commit tests"
+      [ testCase "commit sets Committed to true" <| fun _ -> assertSuccessWithState (P.commit) "x" assertCommitted
+        testCase "bind starts the new parser uncommitted, but propagate the commitment"
+        <| (fun _ ->
+              let parser =
+                P.parser {
+                  do! P.commit
+                  return! P.optional (P.litC 'x')
+                }
+              assertSuccessWithState parser "y" assertCommitted)
+        testCase "bind obtains commitment from a new parser"
+        <| (fun _ ->
+              let parser =
+                P.parser {
+                  do! P.succeed ()
+                  return! P.bind (fun _ -> P.litC 'x') P.commit 
+                }
+              assertSuccessWithState parser "x" assertCommitted)
+      ]
+
 let tests =
     testList
         "Parser tests"
@@ -198,4 +233,5 @@ let tests =
           regexCombinatorTests
           characterParserTests
           stringParserTests
-          intParserTests ]
+          intParserTests
+          commitTests ]

@@ -13,7 +13,7 @@ let indented n p =
     }
     |> Parser.setLabel (sprintf "%i indented %s" n p.Label)
 
-let trailingWhitespace = ~~(skipPrev (star space) eol)
+let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trailing whitespace"
 
 /// Parses an identifier.
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
@@ -30,7 +30,8 @@ module Statement =
         let pSubroutine =
             parser {
                 let! name = pIdentifier |> Parser.setLabel "subroutine name"
-                let! _ = litC ':'
+                let! _ = litC ':' |> Parser.setLabel "subroutine name"
+                do! commit
                 do! trailingWhitespace
                 let! str = plus (indented 2 pFullLine) |> Parser.setLabel "subroutine contents"
                 return Subroutine (name, String.concat "\n" str)
@@ -40,11 +41,12 @@ module Statement =
         let pCall =
             parser {
                 let! name = pIdentifier |> Parser.setLabel "call name"
+                do! commit
                 do! trailingWhitespace
                 return Call name
-            }
+            } |> Parser.setLabel "pCall"
 
-        alt pSubroutine pCall
+        altc pSubroutine pCall |> Parser.setLabel "statement"
 
     let subroutine =
         function
@@ -80,9 +82,9 @@ module Program =
         subroutines program |> List.filter (fun stmt -> Set.contains (Statement.name stmt) callNames)
 
     let parser =
-        let emptyLine = skipPrev (star wsNoEol) eol
-        let between = star emptyLine
-        separated between Statement.parser |> map Program |> Parser.setLabel "program"
+        let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
+        let between = star emptyLine |> Parser.setLabel "between"
+        separated1 between Statement.parser |> map Program |> Parser.setLabel "program"
 
 
 /// The different types of projects that can be defined.
@@ -114,8 +116,8 @@ module Project =
             let! typ = line ProjectType.parser |> Parser.setLabel "project type"
             let! _ = plus (litC '-') |> line |> Parser.setLabel "separator"
             let! prog = Program.parser
-            do! ~~ (star <| skipNext (star wsNoEol) eol )
-            do! eoi
+            do! ~~ (star <| skipNext (star wsNoEol) eol ) |> Parser.setLabel "trailing white lines"
+            do! eoi |> Parser.setLabel "End of project"
 
             return { Type = typ ; Program = prog }
         }

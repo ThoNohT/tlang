@@ -13,20 +13,21 @@ type Position = { Line: int ; Col: int }
 module Position =
     let zero = { Line = 0 ; Col = 0 }
 
-    let toString pos = sprintf "Line %i, col %i" pos.Line pos.Col
+    let toString pos = sprintf "Line %i, col %i" (pos.Line + 1) (pos.Col + 1)
 
 /// The current state before parsing. The position is equal to that of the last token that was consumed. If no tokens
 /// were consumed yet, it is at 1, 0.
-type ParseState = { CurPos: Position ; Input: List<string> }
+type ParseState = { CurPos: Position ; Input: List<string> ; Committed: bool }
 
 module ParseState =
     /// Creates a ParseState from an input string, turning the string into lines, and initializing the position.
     let prepareString (str: String) : ParseState =
         if str = null || str = "" then
-            { CurPos = Position.zero ; Input = [] }
+            { CurPos = Position.zero ; Input = [] ; Committed = false }
         else
             { CurPos = Position.zero
-              Input = List.ofSeq <| str.Split ([| "\r\n" ; "\n" ; "\r" |], StringSplitOptions.None) }
+              Input = List.ofSeq <| str.Split ([| "\r\n" ; "\n" ; "\r" |], StringSplitOptions.None)
+              Committed = false }
 
     /// Returns the contents of the line that is currently being parsed. If all input has been consumed,
     /// then the text 'End of input' is returned.
@@ -57,6 +58,11 @@ module ParseState =
                 // At the end of a line, return a newline and move state to the next line.
                 { state with CurPos = { Line = state.CurPos.Line + 1 ; Col = 0 } }, Some '\n'
 
+    /// Returns a string that marks the current location in the sate when parsing.
+    let markLocation (state: ParseState) =
+        let lineMarker = "^".PadLeft (state.CurPos.Col + 1)
+        String.concat "\n" [ currentLine state ; lineMarker ]
+
 // ------ Parser type and builder -----
 
 type ParserLabel = string
@@ -79,7 +85,7 @@ module ParseResult =
 
     let newState =
         function
-        | Failure _ -> None
+        | Failure (_, _, s) -> Some s
         | Success (_, s) -> Some s
 
     /// Returns the specified parse result if it is a success, or else the second parse result.
@@ -92,9 +98,19 @@ module ParseResult =
     let showError (label: ParserLabel) (message: ErrorMessage) (state: ParseState) =
         let failedMsg = sprintf "Parsing %s failed." label
         let positionMsg = sprintf "at %i:%i:" (state.CurPos.Line + 1) (state.CurPos.Col + 1)
-        let currentLine =   ParseState.currentLine state
-        let lineMarker = "^".PadLeft (state.CurPos.Col + 1)
-        String.concat "\n" [ failedMsg ; positionMsg ; message ; currentLine ; lineMarker ]
+        String.concat "\n" [ failedMsg ; positionMsg ; message ; ParseState.markLocation state ]
+
+    /// Sets the committed state of a parse result to that from the provided state.
+    let setCommittedFromState (state: ParseState) = function
+        | Failure (l, m, s) -> Failure (l, m, { s with Committed = state.Committed })
+        | Success (r, s) -> Success (r, { s with Committed = state.Committed })
+
+    /// Sets the committed state of a parse result to true if either of the two provided states is committed.
+    let setCommittedFromStates (state1: ParseState) (state2: ParseState) r = 
+        let newCommitted = state1.Committed || state2.Committed
+        match r with
+        | Failure (l, m, s) -> Failure (l, m, { s with Committed = newCommitted })
+        | Success (r, s) -> Success (r, { s with Committed = newCommitted })
 
 /// The parser type.
 type Parser<'a> = { Run: ParseState -> ParseResult<'a> ; Label: ParserLabel }
@@ -115,21 +131,67 @@ module Parser =
                 | Success (r, s) -> Success (r, s)
                 | Failure (_, msg, pos) -> Failure (newLabel, msg, pos) }
 
-/// Bind operation on parsers.
-let bind (f: 'a -> Parser<'b>) (p: Parser<'a>) =
-    { Label = "unknown"
+/// A parser that dumps its results, but does not alter the provided parser otherwise.
+/// Useful for testing parsers.
+let mutable indent = 0
+let dump (p: Parser<_>) =
+    { Label = p.Label
       Run =
         fun state ->
-            match p.Run state with
-            | Failure (l, m, p) -> Failure (l, m, p)
-            | Success (res1, state') -> (f res1).Run state' }
+            let curIndent = indent
+            let prefix = "".PadLeft(indent * 2)
+            printfn "%s=== Dump for %s ===" prefix p.Label
+            printfn "%sCommitted before: %b" prefix state.Committed
+            indent <- indent + 1
+            let res =
+                match p.Run state with
+                | Success (r, s) ->
+                    printfn "%sSuccess" prefix
+                    printfn "%sResult:    %A" prefix r
+                    printfn "%sPosition:  %s" prefix <| Position.toString s.CurPos
+                    printfn "%sCommitted: %b" prefix s.Committed
+                    printfn "%s" <| ParseState.markLocation s
+                    Success (r, s)
+                | Failure (l, m, s) ->
+                    printfn "%sFailure" prefix
+                    printfn "%sMessage:   %s" prefix m
+                    printfn "%sPosition:  %s" prefix <| Position.toString s.CurPos
+                    printfn "%sCommitted: %b" prefix s.Committed
+                    printfn "%s" <| ParseState.markLocation s
+                    Failure (l, m, s)
+            printfn "%s=== End of dump for %s ===" prefix p.Label
+            indent <- curIndent
+            res
+    }
 
+/// Bind operation on parsers.
+let bind (f: 'a -> Parser<'b>) (p: Parser<'a>) =
+    { Label = sprintf "bind after %s" p.Label
+      Run =
+        fun state ->
+            // Committing does not pass on through parsers called with bind, only through the
+            // result produced by these parsers.
+            match p.Run state with
+            | Failure (l, m, s') -> Failure (l, m, s') |> ParseResult.setCommittedFromStates state s'
+            | Success (r, s') ->
+                match (f r).Run { s' with Committed = false } with
+                | Failure (l', m', s'') -> Failure (l', m', s'') |> ParseResult.setCommittedFromStates s' s''
+                | Success (r'', s'') -> Success (r'', s'') |> ParseResult.setCommittedFromStates s' s''
+    }
+    
 /// Creates a parser that always returns the specified input and doesn't consume anything.
 let succeed x = { Label = "succeed" ; Run = fun state -> ParseResult.success x state }
 
 /// Creates a parser that always fails.
 let fail () =
     let label = "Fail" in { Label = label ; Run = fun state -> ParseResult.failure label state "Fail parser failed." }
+
+/// A parser that does nothing except mark the state as committed.
+/// After the state is committed, an alt parser will no longer try another option.
+let commit =
+    { Label = "commit"
+      Run = fun state -> Success ((), { state with Committed = true })
+    }
 
 /// Changes a parser, such that if it fails, the error message is altered using the provided function.
 let mapError (f: string -> string) (p: Parser<_>) =
@@ -154,25 +216,6 @@ let parser = new ParserBuilder ()
 
 // ----- Combinators -----
 
-/// A parser that dumps its results, but does not alter the provided parser otherwise.
-/// Useful for testing parsers.
-let dump (p: Parser<_>) =
-    { Label = p.Label
-      Run =
-        fun state ->
-            match p.Run state with
-            | Success (r, s) ->
-                printfn "Success"
-                printfn "Result:    %A" r
-                printfn "Remaining: %A" s
-                Success (r, s)
-            | Failure (l, m, p) ->
-                printfn "Failure"
-                printfn "Label:     %s" l
-                printfn "Message:   %s" m
-                printfn "Position:  %A" p
-                Failure (l, m, p) }
-
 /// Performs a parser, and succeeds if it succeeds, but consumes no input.
 let peek p =
     { Label = sprintf "peek (%s)" p.Label
@@ -180,7 +223,7 @@ let peek p =
         fun state ->
             match p.Run state with
             | Success (r, _) -> Success (r, state)
-            | Failure (l, m, p) -> Failure (l, m, p) }
+            | Failure (l, m, s) -> Failure (l, m, s) }
 
 /// Returns a parser that performs a check on an input token and fails if the check fails or there is no more input.
 let satisfy f label =
@@ -205,7 +248,7 @@ let check f p =
       Run =
         fun state ->
             match p.Run state with
-            | Failure (l, m, p) -> Failure (l, m, p)
+            | Failure (l, m, s) -> Failure (l, m, s)
             | Success (r, s') when f r -> Success (r, s')
             | Success (r, _) -> ParseResult.failure label state (sprintf "Unexpected %A" r) }
 
@@ -256,11 +299,24 @@ let map f p =
 /// Ignores the result of a parser.
 let (~~) (p: Parser<_>) = map ignore p
 
+/// Alt, but copies the committed state from the called parsers.
+let altc (p1: Parser<_>) (p2: Parser<_>) =
+    { Label = sprintf "(%s) alt (%s)" p1.Label p2.Label
+      Run = fun state ->
+        match p1.Run state with
+        | Success (r, s) -> Success (r, s )
+        | Failure (l, m, s) when s.Committed -> Failure (l, m, s)
+        | Failure (l, m, s) ->
+            match p2.Run state with
+            | Success (r, s) -> Success (r, s)
+            | Failure (l', m', s') -> Failure (l', m', s')
+    }
+
 /// Combines two parsers by trying to apply the first one first, and if it fails, applying the second one to the same
 /// input. Fails if both parsers fail.
 let alt (p1: Parser<_>) (p2: Parser<_>) =
-    { Label = sprintf "(%s) alt (%s)" p1.Label p2.Label
-      Run = fun state -> ParseResult.orElse (fun () -> p2.Run state) (p1.Run state) }
+    let temp = altc p1 p2
+    { temp with Run = fun state -> temp.Run state |> ParseResult.setCommittedFromState state }
 
 /// Tries each of the specified parsers in order.
 let rec oneOf (ps: List<Parser<_>>) = List.reduce alt ps
@@ -268,19 +324,23 @@ let rec oneOf (ps: List<Parser<_>>) = List.reduce alt ps
 /// Tail recursive helper to run a parser zero or more times.
 /// Doesn't accept a parse result that hasn't consumed input (running the same parser multiple times without consuming
 /// input is a guaranteed infinite loop).
-let rec private parseZeroOrMore acc p s =
+/// If a parser inside the loop has committed and fails, or consumes no input, this parser also fails.
+let rec private parseZeroOrMore label acc p s =
     match p.Run s with
-    | Success (r, s') when s.CurPos <> s'.CurPos -> parseZeroOrMore (r :: acc) p s'
-    | _ -> List.rev acc, s
+    | Success (r, s') when s.CurPos <> s'.CurPos -> parseZeroOrMore label (r :: acc) p { s' with Committed = s.Committed }
+    | Success (r, s') when s'.Committed && s.CurPos = s'.CurPos ->
+        let msg = sprintf "Parser %s committed but did not consume input." p.Label
+        Failure (label, msg, s')
+    | Failure (l, m, s') when s'.Committed -> Failure (l, m, s')
+    | _ -> Success (List.rev acc, s)
 
 /// Returns a parser which runs the specified parser zero or more times.
 /// Also stops if the parser succeeds but consumes no more input, in this case, the parse result is not included.
 let star p =
-    { Label = sprintf "star %s" p.Label
-      Run =
-        fun s ->
-            let r, s' = parseZeroOrMore [] p s
-            Success (r, s') }
+    let label = sprintf "star %s" p.Label
+    { Label = label
+      Run = fun s -> parseZeroOrMore label [] p s
+    }
 
 /// Returns a parser which runs the specified parser one or more times.
 let plus p =
@@ -298,7 +358,7 @@ let rec private matchExactly acc n p s =
     | n ->
         match p.Run s with
         | Success (r, s') -> matchExactly (r :: acc) (n - 1) p s'
-        | Failure (l, m, p) -> Failure (l, m, p)
+        | Failure (l, m, s) -> Failure (l, m, s)
 
 /// Returns a parser which runs the specified parser exactly n times.
 let times n p = { Label = sprintf "times %s" p.Label ; Run = fun state -> matchExactly [] n p state }
@@ -325,7 +385,7 @@ let rec private sequenceHelper acc ps s =
     | p :: ps' ->
         match p.Run s with
         | Success (r, s') -> sequenceHelper (r :: acc) ps' s'
-        | Failure (l, m, p) -> Failure (l, m, p)
+        | Failure (l, m, s) -> Failure (l, m, s)
 
 let sequence ps = { Label = sprintf "sequence %A" (List.map (fun p -> p.Label) ps) ; Run = sequenceHelper [] ps }
 
