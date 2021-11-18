@@ -100,17 +100,17 @@ module ParseResult =
         let positionMsg = sprintf "at %i:%i:" (state.CurPos.Line + 1) (state.CurPos.Col + 1)
         String.concat "\n" [ failedMsg ; positionMsg ; message ; ParseState.markLocation state ]
 
+    /// Sets the committed state of a parse result to the specified value.
+    let setCommitted committed = function
+        | Failure (l, m, s) -> Failure (l, m, { s with Committed = committed })
+        | Success (r, s) -> Success (r, { s with Committed = committed })
+
     /// Sets the committed state of a parse result to that from the provided state.
-    let setCommittedFromState (state: ParseState) = function
-        | Failure (l, m, s) -> Failure (l, m, { s with Committed = state.Committed })
-        | Success (r, s) -> Success (r, { s with Committed = state.Committed })
+    let setCommittedFromState (state: ParseState) = setCommitted state.Committed
 
     /// Sets the committed state of a parse result to true if either of the two provided states is committed.
-    let setCommittedFromStates (state1: ParseState) (state2: ParseState) r = 
-        let newCommitted = state1.Committed || state2.Committed
-        match r with
-        | Failure (l, m, s) -> Failure (l, m, { s with Committed = newCommitted })
-        | Success (r, s) -> Success (r, { s with Committed = newCommitted })
+    let setCommittedFromStates (state1: ParseState) (state2: ParseState) =
+        setCommitted (state1.Committed || state2.Committed)
 
 /// The parser type.
 type Parser<'a> = { Run: ParseState -> ParseResult<'a> ; Label: ParserLabel }
@@ -186,11 +186,23 @@ let succeed x = { Label = "succeed" ; Run = fun state -> ParseResult.success x s
 let fail () =
     let label = "Fail" in { Label = label ; Run = fun state -> ParseResult.failure label state "Fail parser failed." }
 
-/// A parser that does nothing except mark the state as committed.
+/// Simply returns the current committed state.
+let isCommitted = 
+    { Label = "IsCommited"
+      Run = fun s -> ParseResult.success s.Committed s
+    }
+
+/// A parser that does nothing except mark the state as committed or uncommitted.
 /// After the state is committed, an alt parser will no longer try another option.
-let commit =
-    { Label = "commit"
-      Run = fun state -> Success ((), { state with Committed = true })
+let commit committed =
+    { Label = sprintf "commit %b" committed
+      Run = fun state -> Success ((), { state with Committed = committed })
+    }
+
+/// Changes a parser to have a committed result.
+let commit' committed p =
+    { Label = sprintf "committed %b %s" committed p.Label
+      Run = fun state -> p.Run state |> ParseResult.setCommitted committed
     }
 
 /// Changes a parser, such that if it fails, the error message is altered using the provided function.
@@ -331,8 +343,8 @@ let rec private parseZeroOrMore label acc p s =
     | Success (r, s') when s'.Committed && s.CurPos = s'.CurPos ->
         let msg = sprintf "Parser %s committed but did not consume input." p.Label
         Failure (label, msg, s')
-    | Failure (l, m, s') when s'.Committed -> Failure (l, m, s')
-    | _ -> Success (List.rev acc, s)
+    | Failure (l, m, s') when s'.Committed -> Failure (l, m, s') |> ParseResult.setCommitted s.Committed
+    | _ -> Success (List.rev acc, s) |> ParseResult.setCommitted s.Committed
 
 /// Returns a parser which runs the specified parser zero or more times.
 /// Also stops if the parser succeeds but consumes no more input, in this case, the parse result is not included.
@@ -345,8 +357,9 @@ let star p =
 /// Returns a parser which runs the specified parser one or more times.
 let plus p =
     parser {
-        let! first = p
-        let! rest = star p
+        let! committedBefore = isCommitted
+        let! first = p |> commit' committedBefore // the first parser could commit, revert this.
+        let! rest = star p  // Star doesn't commit.
         return first :: rest
     }
     |> Parser.setLabel (sprintf "plus %s" p.Label)

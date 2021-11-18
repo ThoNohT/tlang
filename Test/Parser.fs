@@ -25,7 +25,7 @@ let assertFailuresAt p inputs line col =
     for input in inputs do
         assertFailureAt p input line col
 
-let assertfailureWithState (p: P.Parser<_>) input f =
+let assertFailureWithState (p: P.Parser<_>) input f =
   match P.Parser.runParser p (P.ParseState.prepareString input) with
   | P.Failure (_, _, s) -> f s
   | _ -> Test.Fail "Expected the parser to fail."
@@ -206,12 +206,12 @@ let assertUncommitted (s: P.ParseState) = Assert.Equal ("Expected the state to b
 let commitTests =
     testList 
       "Commit tests"
-      [ testCase "commit sets Committed to true" <| fun _ -> assertSuccessWithState (P.commit) "x" assertCommitted
+      [ testCase "commit sets Committed to true" <| fun _ -> assertSuccessWithState (P.commit true) "x" assertCommitted
         testCase "bind starts the new parser uncommitted, but propagate the commitment"
         <| (fun _ ->
               let parser =
                 P.parser {
-                  do! P.commit
+                  do! P.commit true
                   return! P.optional (P.litC 'x')
                 }
               assertSuccessWithState parser "y" assertCommitted)
@@ -220,9 +220,37 @@ let commitTests =
               let parser =
                 P.parser {
                   do! P.succeed ()
-                  return! P.bind (fun _ -> P.litC 'x') P.commit 
+                  return! P.commit' true <| P.litC 'x'
                 }
               assertSuccessWithState parser "x" assertCommitted)
+        testCase "optional fails when a committed parser fails"
+        <| fun _ -> assertFailureAt (P.optional (P.commit' true (P.litC 'x'))) "y" 0 0
+        testCase "optional fails not committed from a committed parser"
+        <| fun _ -> assertFailureWithState (P.optional (P.commit' true (P.litC 'x'))) "y" assertUncommitted
+        testCase "optional succeeds not committed from a committed parser"
+        <| fun _ -> assertSuccessWithState (P.optional (P.commit' true (P.litC 'x'))) "x" assertUncommitted
+        testCase "star fails when a committed parser fails"
+        <| fun _ -> assertFailureAt (P.star (P.commit' true (P.litC 'x'))) "xxxx" 0 4
+        testCase "star fails not committed from a committed parser"
+        <| fun _ -> assertFailureWithState (P.star (P.commit' true (P.litC 'x'))) "xxxx" assertUncommitted
+        testCase "plus fails when a committed parser fails"
+        <| fun _ -> assertFailureAt (P.plus (P.commit' true (P.litC 'x'))) "xxxx" 0 4
+        testCase "plus fails not committed from from a committed parser"
+        <| fun _ -> assertFailureWithState (P.plus (P.commit' true (P.litC 'x'))) "xxxx" assertUncommitted
+        testCase "alt fails if the first parser fails and is committed"
+        <| fun _ -> assertFailureAt (P.alt (P.commit' true (P.litC 'x')) (P.litC 'y')) "y" 0 0
+        testCase "alt with a committed first parser does not commit"
+        <| fun _ -> assertSuccessWithState (P.alt (P.commit' true (P.litC 'x')) (P.litC 'y')) "x" assertUncommitted
+        testCase "alt with a committed second parser does not commit"
+        <| fun _ -> assertSuccessWithState (P.alt (P.litC 'x') (P.commit' true (P.litC 'y')) ) "y" assertUncommitted
+        testCase "altc fails if the first parser fails and is committed"
+        <| fun _ -> assertFailureAt (P.altc (P.commit' true (P.litC 'x')) (P.litC 'y')) "y" 0 0
+        testCase "altc with a committed first parser does commit"
+        <| fun _ -> assertSuccessWithState (P.altc (P.commit' true (P.litC 'x')) (P.litC 'y')) "x" assertCommitted
+        testCase "altc with a committed first parser does commit on failure"
+        <| fun _ -> assertFailureWithState (P.altc (P.commit' true (P.litC 'x')) (P.litC 'y')) "y" assertCommitted
+        testCase "altc with a committed second parser does commit"
+        <| fun _ -> assertSuccessWithState (P.altc (P.litC 'x') (P.commit' true (P.litC 'y')) ) "y" assertCommitted
       ]
 
 let tests =

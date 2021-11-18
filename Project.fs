@@ -31,7 +31,7 @@ module Statement =
             parser {
                 let! name = pIdentifier |> Parser.setLabel "subroutine name"
                 let! _ = litC ':' |> Parser.setLabel "subroutine name"
-                do! commit
+                do! commit true
                 do! trailingWhitespace
                 let! str = plus (indented 2 pFullLine) |> Parser.setLabel "subroutine contents"
                 return Subroutine (name, String.concat "\n" str)
@@ -41,7 +41,7 @@ module Statement =
         let pCall =
             parser {
                 let! name = pIdentifier |> Parser.setLabel "call name"
-                do! commit
+                do! commit true
                 do! trailingWhitespace
                 return Call name
             } |> Parser.setLabel "pCall"
