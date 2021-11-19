@@ -4,8 +4,8 @@ open Fuchu
 
 module P = tlang.Parser
 
-let assertSuccessWith p input result remaining line col =
-    match P.Parser.runParser p (P.ParseState.prepareString input) with
+let assertSuccessWith (p: P.Parser<_>) input result remaining line col =
+    match p.Run (P.ParseState.prepareString input) with
     | P.Failure (l, m, s) ->
         Test.Fail <| sprintf "Expected the parser to succeed, but got error %s: %s at %s." l m (P.Position.toString s.CurPos)
     | P.Success (res, state) ->
@@ -14,8 +14,8 @@ let assertSuccessWith p input result remaining line col =
         Assert.Equal ("Wrong line.", line, state.CurPos.Line)
         Assert.Equal ("Wrong column.", col, state.CurPos.Col)
 
-let assertFailureAt p input line col =
-    match P.Parser.runParser p (P.ParseState.prepareString input) with
+let assertFailureAt (p: P.Parser<_>) input line col =
+    match p.Run (P.ParseState.prepareString input) with
     | P.Failure (_, _, s) ->
         Assert.Equal ("Wrong line.", line, s.CurPos.Line)
         Assert.Equal ("Wrong column.", col, s.CurPos.Col)
@@ -26,12 +26,12 @@ let assertFailuresAt p inputs line col =
         assertFailureAt p input line col
 
 let assertFailureWithState (p: P.Parser<_>) input f =
-  match P.Parser.runParser p (P.ParseState.prepareString input) with
+  match p.Run (P.ParseState.prepareString input) with
   | P.Failure (_, _, s) -> f s
   | _ -> Test.Fail "Expected the parser to fail."
 
 let assertSuccessWithState (p: P.Parser<_>) input f =
-  match P.Parser.runParser p (P.ParseState.prepareString input) with
+  match p.Run (P.ParseState.prepareString input) with
   | P.Success (_, s) -> f s
   | _ -> Test.Fail "Expected the parser to succeed."
   

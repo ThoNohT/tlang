@@ -116,11 +116,8 @@ module ParseResult =
 type Parser<'a> = { Run: ParseState -> ParseResult<'a> ; Label: ParserLabel }
 
 module Parser =
-    /// Runs a parser, getting the result and the remaining input.
-    let runParser (p: Parser<_>) = p.Run
-
     /// Runs a parser, returning only the result.
-    let parse p state = runParser p (ParseState.prepareString state) |> ParseResult.result
+    let parse p state = p.Run (ParseState.prepareString state) |> ParseResult.result
 
     let setLabel newLabel p =
         { Label = newLabel

@@ -92,7 +92,7 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
 
 /// Parses an input file to a Project.
 let parseProject inputFile =
-    let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> Parser.runParser Project.parser
+    let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> Project.parser.Run
 
     match parseResult with
     | Failure (l, m, s) ->
