@@ -34,7 +34,7 @@ let assertSuccessWithState (p: P.Parser<_>) input f =
   match p.Run (P.ParseState.prepareString input) with
   | P.Success (_, s) -> f s
   | _ -> Test.Fail "Expected the parser to succeed."
-  
+
 let parserTests =
     testList
         "Parser"
@@ -204,7 +204,7 @@ let assertCommitted (s: P.ParseState) = Assert.Equal ("Expected the state to be 
 let assertUncommitted (s: P.ParseState) = Assert.Equal ("Expected the state to be uncommitted.", false, s.Committed)
 
 let commitTests =
-    testList 
+    testList
       "Commit tests"
       [ testCase "commit sets Committed to true" <| fun _ -> assertSuccessWithState (P.commit true) "x" assertCommitted
         testCase "bind starts the new parser uncommitted, but propagate the commitment"
@@ -251,6 +251,8 @@ let commitTests =
         <| fun _ -> assertFailureWithState (P.altc (P.commit' true (P.litC 'x')) (P.litC 'y')) "y" assertCommitted
         testCase "altc with a committed second parser does commit"
         <| fun _ -> assertSuccessWithState (P.altc (P.litC 'x') (P.commit' true (P.litC 'y')) ) "y" assertCommitted
+        testCase "altc with a committed second parser does commit on failure"
+        <| fun _ -> assertFailureWithState (P.altc (P.litC 'x') (P.commit' true (P.litC 'y')) ) "z" assertCommitted
       ]
 
 let tests =
