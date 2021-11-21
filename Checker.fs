@@ -31,8 +31,13 @@ let check (project: Project) =
     let unusedSubs = Set.difference subNames callNames
 
     let callErrors =
-        undefinedCalls |> Set.toList |> List.map (CheckError << sprintf "Call to undefined subroutine '%s'.")
+        undefinedCalls
+        |> Set.toList
+        |> List.map (CheckError << sprintf "Call to undefined subroutine '%s'." << SubroutineName.value)
 
-    let subWarnings = unusedSubs |> Set.toList |> List.map (CheckWarning << sprintf "Unused subroutine '%s'.")
+    let subWarnings =
+        unusedSubs
+        |> Set.toList
+        |> List.map (CheckWarning << sprintf "Unused subroutine '%s'." << SubroutineName.value)
 
     subWarnings @ callErrors

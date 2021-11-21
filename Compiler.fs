@@ -31,14 +31,15 @@ let asmEncodeString (str: string) =
 /// Writes a data declaration for a statement, given a writing function.
 let writeDecl wl =
     function
-    | Subroutine (name, value) -> wl <| sprintf "    txt_%s db %s" name (asmEncodeString (sprintf "%s%c" value '\n'))
+    | Subroutine (SubroutineName name, value) ->
+        wl <| sprintf "    txt_%s db %s" name (asmEncodeString (sprintf "%s%c" value '\n'))
     | _ -> ()
 
 
 /// Writes a statement, given a writing function.
 let writeStatement wl =
     function
-    | Subroutine (name, value) ->
+    | Subroutine (SubroutineName name, value) ->
         wl <| sprintf "_%s:" name
         wl "    mov rax, 1"
         wl "    mov rdi, 1"
@@ -47,7 +48,7 @@ let writeStatement wl =
         wl "    syscall"
         wl "    ret"
         wl ""
-    | Call name ->
+    | Call (SubroutineName name) ->
         wl <| sprintf "    call _%s" name
 
 /// Writes the project to x86_64 linux assembly for Nasm.
@@ -85,7 +86,7 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     wl "    ; Subroutines."
 
     for sr in Program.usedSubroutines project.Program do
-        printfn "Writing Subroutine %s" (Statement.name sr)
+        printfn "Writing Subroutine %s" (SubroutineName.value <| Statement.name sr)
         writeStatement wl sr
 
     writer.Close ()

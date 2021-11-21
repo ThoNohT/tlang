@@ -18,9 +18,15 @@ let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trail
 /// Parses an identifier.
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
 
+/// The name of a subroutine.
+type SubroutineName = SubroutineName of string
+
+module SubroutineName =
+    let value (SubroutineName name) = name
+
 type Statement =
-    | Subroutine of string * string
-    | Call of string
+    | Subroutine of SubroutineName * string
+    | Call of SubroutineName
 
 module Statement =
     /// A parser for a statement.
@@ -29,7 +35,7 @@ module Statement =
         /// Then on the lines below, indented by 2 characters, the text to display for this routine.
         let pSubroutine =
             parser {
-                let! name = pIdentifier |> Parser.setLabel "subroutine name"
+                let! name = pIdentifier |> Parser.setLabel "subroutine name" |> map SubroutineName
                 let! _ = litC ':' |> Parser.setLabel "subroutine name"
                 do! commit true
                 do! trailingWhitespace
@@ -40,7 +46,7 @@ module Statement =
         /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
         let pCall =
             parser {
-                let! name = pIdentifier |> Parser.setLabel "call name"
+                let! name = pIdentifier |> Parser.setLabel "call name" |> map SubroutineName
                 do! commit true
                 do! trailingWhitespace
                 return Call name
