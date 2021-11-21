@@ -24,8 +24,8 @@ module CheckIssue =
 let check (project: Project) =
     let prog = project.Program
 
-    let callNames = Program.calls prog |> List.map Statement.name |> Set.ofList
-    let subNames = Program.subroutines prog |> List.map Statement.name |> Set.ofList
+    let callNames = Program.calls prog |> List.choose TopLevelStatement.name |> Set.ofList
+    let subNames = Program.subroutines prog |> List.choose TopLevelStatement.name |> Set.ofList
 
     let undefinedCalls = Set.difference callNames subNames
     let unusedSubs = Set.difference subNames callNames

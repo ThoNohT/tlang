@@ -41,8 +41,8 @@ let parserTests =
         [ testCase "succeed succeeds on empty input" <| fun _ -> assertSuccessWith (P.succeed ()) "" () "" 0 0
           testCase "succeed succeeds on nonempty input and doesn't consume"
           <| fun _ -> assertSuccessWith (P.succeed ()) "x" () "x" 0 0
-          testCase "fail fails on empty input" <| fun _ -> assertFailureAt (P.fail ()) "" 0 0
-          testCase "fail fails on nonempty input" <| fun _ -> assertFailureAt (P.fail ()) "x" 0 0 ]
+          testCase "fail fails on empty input" <| fun _ -> assertFailureAt (P.fail "test") "" 0 0
+          testCase "fail fails on nonempty input" <| fun _ -> assertFailureAt (P.fail "test") "x" 0 0 ]
 
 let combinatorTests =
     testList
@@ -253,6 +253,23 @@ let commitTests =
         <| fun _ -> assertSuccessWithState (P.altc (P.litC 'x') (P.commit' true (P.litC 'y')) ) "y" assertCommitted
         testCase "altc with a committed second parser does commit on failure"
         <| fun _ -> assertFailureWithState (P.altc (P.litC 'x') (P.commit' true (P.litC 'y')) ) "z" assertCommitted
+
+        testCase "oneOf fails if the first parser fails and is committed"
+        <| fun _ -> assertFailureAt (P.oneOf [ P.commit' true (P.litC 'x') ; P.litC 'y']) "y" 0 0
+        testCase "oneOf with a committed first parser does not commit"
+        <| fun _ -> assertSuccessWithState (P.oneOf [ P.commit' true (P.litC 'x') ; P.litC 'y' ] ) "x" assertUncommitted
+        testCase "oneOf with a committed second parser does not commit"
+        <| fun _ -> assertSuccessWithState (P.oneOf [ P.litC 'x' ; P.commit' true (P.litC 'y') ] ) "y" assertUncommitted
+        testCase "oneOfc fails if the first parser fails and is committed"
+        <| fun _ -> assertFailureAt (P.oneOfc [ P.commit' true (P.litC 'x') ; P.litC 'y' ]) "y" 0 0
+        testCase "oneOfc with a committed first parser does commit"
+        <| fun _ -> assertSuccessWithState (P.oneOfc [ P.commit' true (P.litC 'x') ; P.litC 'y' ]) "x" assertCommitted
+        testCase "oneOfc with a committed first parser does commit on failure"
+        <| fun _ -> assertFailureWithState (P.oneOfc [ P.commit' true (P.litC 'x') ; P.litC 'y' ]) "y" assertCommitted
+        testCase "oneOfc with a committed second parser does commit"
+        <| fun _ -> assertSuccessWithState (P.oneOfc [ P.litC 'x' ; P.commit' true (P.litC 'y') ] ) "y" assertCommitted
+        testCase "oneOfc with a committed second parser does commit on failure"
+        <| fun _ -> assertFailureWithState (P.oneOfc [ P.litC 'x' ; P.commit' true (P.litC 'y') ] ) "z" assertCommitted
       ]
 
 let tests =

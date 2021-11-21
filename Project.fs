@@ -16,7 +16,45 @@ let indented n p =
 let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trailing whitespace"
 
 /// Parses an identifier.
+// TODO: How to not allow parsing a keyword?
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
+
+/// Parses a specific keyword.
+let pKeyword str =
+    skipNext
+        (lit str)
+        (peek (neg "A keyword should end with something else than an alphanumeric character" alphaNum))
+        |> Parser.setLabel (sprintf "Keyword %s" str)
+
+type StringLiteral = StringLiteral of string
+
+/// Parses a character inside a string liter. Either an unescaped regular character, or an escaped special character.
+let stringEscapedChar =
+    // TODO: Support for unicode
+    let reservedChars = [ '"' ; '\\' ]
+    let mappedChars =
+        Map.ofList [('\\', '\\') ; ('/', '/') ; ('b', '\b') ; ('f', '\f') ; ('n', '\n') ; ('r', '\r') ; ('t', '\t') ]
+    let unescapedChar = check (fun c -> not <| List.contains c reservedChars) pChar |> Parser.setLabel "unescaped character"
+    let mappedChar = map (flip Map.find mappedChars) (anyOf (List.ofSeq <| Map.keys mappedChars))
+    let unicodeChar = times 4 digit |> map (List.fold (fun s e -> s * 10 + e) 0) |> map char
+
+    let escapedChar =
+        parser {
+            do! ~~ (litC '\\')
+            do! commit true
+
+            return! oneOf [ mappedChar ; unicodeChar ]
+        } |> Parser.setLabel "escaped character"
+    alt unescapedChar escapedChar
+
+let pStringLiteral =
+    parser {
+     do! ~~ (litC '"')
+     do! commit true
+     let! value = stringOf stringEscapedChar
+     do! ~~ (litC '"')
+     return StringLiteral value
+    }
 
 /// The name of a subroutine.
 type SubroutineName = SubroutineName of string
@@ -24,35 +62,59 @@ type SubroutineName = SubroutineName of string
 module SubroutineName =
     let value (SubroutineName name) = name
 
+/// A statement that can happen either on top level or in a subroutine.
 type Statement =
-    | Subroutine of SubroutineName * string
-    | Call of SubroutineName
+    // Print a string to stdout.
+    PrintStr of StringLiteral
 
 module Statement =
-    /// A parser for a statement.
+    let parser =
+        parser {
+            do! ~~ (pKeyword "print")
+            do! commit true
+
+            do! ~~ (plus ws)
+
+            let! value = pStringLiteral
+            return PrintStr value
+        }
+
+/// A statement that can only appear at the top level of a program.
+type TopLevelStatement =
+    // Defines a new subroutine.
+    | Subroutine of SubroutineName * List<Statement>
+    // Calls a subroutine.
+    | Call of SubroutineName
+    // A regular statement.
+    | Stmt of Statement
+
+module TopLevelStatement =
+    /// A parser for a top-level statement.
     let parser =
         /// A parser for a subroutine. Must be the name of the subroutine, followed by a colon.
         /// Then on the lines below, indented by 2 characters, the text to display for this routine.
         let pSubroutine =
             parser {
-                let! name = pIdentifier |> Parser.setLabel "subroutine name" |> map SubroutineName
+                let! name = pIdentifier |> Parser.setLabel "subroutine name"
                 let! _ = litC ':' |> Parser.setLabel "subroutine name"
                 do! commit true
                 do! trailingWhitespace
-                let! str = plus (indented 2 pFullLine) |> Parser.setLabel "subroutine contents"
-                return Subroutine (name, String.concat "\n" str)
+                let! stmts = plus (skipNext (indented 2 Statement.parser) trailingWhitespace)
+                return Subroutine (SubroutineName name, stmts)
             }
 
         /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
         let pCall =
             parser {
-                let! name = pIdentifier |> Parser.setLabel "call name" |> map SubroutineName
+                let! name = pIdentifier |> Parser.setLabel "call name"
                 do! commit true
                 do! trailingWhitespace
-                return Call name
+                return Call <| SubroutineName name
             } |> Parser.setLabel "pCall"
 
-        altc pSubroutine pCall |> Parser.setLabel "statement"
+        let pStatement = skipNext Statement.parser trailingWhitespace |> map Stmt
+
+        oneOfc [ pSubroutine ; pCall ; pStatement ] |> Parser.setLabel "statement"
 
     let subroutine =
         function
@@ -64,33 +126,30 @@ module Statement =
         | ((Call _) as c) -> Some c
         | _ -> None
 
+    /// Get the name of a subroutine referenced in a statement.
     let name =
         function
-        | Subroutine (name, _) -> name
-        | Call name -> name
-
-    let value =
-        function
-        | (Subroutine (_, value)) -> value
-        | _ -> ""
+        | Subroutine (name, _) -> Some name
+        | Call name -> Some name
+        | _ -> None
 
 
-type Program = Program of List<Statement>
+type Program = Program of List<TopLevelStatement>
 
 module Program =
-    let subroutines (Program stmts) = List.choose Statement.subroutine stmts
-    let calls (Program stmts) = List.choose Statement.call stmts
+    let subroutines (Program stmts) = List.choose TopLevelStatement.subroutine stmts
+    let calls (Program stmts) = List.choose TopLevelStatement.call stmts
     let statements (Program stmts) = stmts
 
     /// Returns all subroutines that are actually called.
     let usedSubroutines program =
-        let callNames = calls program |> List.map Statement.name |> Set.ofList
-        subroutines program |> List.filter (fun stmt -> Set.contains (Statement.name stmt) callNames)
+        let callNames = calls program |> List.map TopLevelStatement.name |> Set.ofList
+        subroutines program |> List.filter (fun stmt -> Set.contains (TopLevelStatement.name stmt) callNames)
 
     let parser =
         let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
         let between = star emptyLine |> Parser.setLabel "between"
-        separated1 between Statement.parser |> map Program |> Parser.setLabel "program"
+        separated1 between TopLevelStatement.parser |> map Program |> Parser.setLabel "program"
 
 
 /// The different types of projects that can be defined.

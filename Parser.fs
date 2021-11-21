@@ -175,16 +175,16 @@ let bind (f: 'a -> Parser<'b>) (p: Parser<'a>) =
                 | Failure (l', m', s'') -> Failure (l', m', s'') |> ParseResult.setCommittedFromStates s' s''
                 | Success (r'', s'') -> Success (r'', s'') |> ParseResult.setCommittedFromStates s' s''
     }
-    
+
 /// Creates a parser that always returns the specified input and doesn't consume anything.
 let succeed x = { Label = "succeed" ; Run = fun state -> ParseResult.success x state }
 
-/// Creates a parser that always fails.
-let fail () =
-    let label = "Fail" in { Label = label ; Run = fun state -> ParseResult.failure label state "Fail parser failed." }
+/// Creates a parser that always fails with the specified message.
+let fail msg =
+    let label = "Fail" in { Label = label ; Run = fun state -> ParseResult.failure label state msg }
 
 /// Simply returns the current committed state.
-let isCommitted = 
+let isCommitted =
     { Label = "IsCommited"
       Run = fun s -> ParseResult.success s.Committed s
     }
@@ -261,6 +261,16 @@ let check f p =
             | Success (r, s') when f r -> Success (r, s')
             | Success (r, _) -> ParseResult.failure label state (sprintf "Unexpected %A" r) }
 
+/// Negates a parser, failing when it succeeds, and succeeding when it fails.
+let neg msg p =
+    let label = sprintf "Neg %s" p.Label
+    { Label = label
+      Run = fun state ->
+        match p.Run state  with
+        | Success (_, s') -> Failure (label, msg, s')
+        | Failure (l, m, s') -> Success ((), s')
+    }
+
 /// Performs 2 parsers in sequence, and combines them with the provided function.
 let combine f p1 p2 =
     parser {
@@ -315,7 +325,7 @@ let altc (p1: Parser<_>) (p2: Parser<_>) =
         match p1.Run state with
         | Success (r, s) -> Success (r, s )
         | Failure (l, m, s) when s.Committed -> Failure (l, m, s)
-        | Failure (l, m, s) ->
+        | Failure _ ->
             match p2.Run state with
             | Success (r, s) -> Success (r, s)
             | Failure (l', m', s') -> Failure (l', m', s')
@@ -328,7 +338,16 @@ let alt (p1: Parser<_>) (p2: Parser<_>) =
     { temp with Run = fun state -> temp.Run state |> ParseResult.setCommittedFromState state }
 
 /// Tries each of the specified parsers in order.
-let rec oneOf (ps: List<Parser<_>>) = List.reduce alt ps
+let rec oneOf = function
+    | [] -> failwith "No parsers provided"
+    | [ p ] -> p
+    | p :: ps -> alt p (oneOf ps)
+
+/// Like oneOf, but copies the committed state from the called parsers.
+let rec oneOfc = function
+    | [] -> failwith "No parsers provided"
+    | [ p ] -> p
+    | p :: ps -> altc p (oneOfc ps)
 
 /// Tail recursive helper to run a parser zero or more times.
 /// Doesn't accept a parse result that hasn't consumed input (running the same parser multiple times without consuming
@@ -337,7 +356,7 @@ let rec oneOf (ps: List<Parser<_>>) = List.reduce alt ps
 let rec private parseZeroOrMore label acc p s =
     match p.Run s with
     | Success (r, s') when s.CurPos <> s'.CurPos -> parseZeroOrMore label (r :: acc) p { s' with Committed = s.Committed }
-    | Success (r, s') when s'.Committed && s.CurPos = s'.CurPos ->
+    | Success (_, s') when s'.Committed && s.CurPos = s'.CurPos ->
         let msg = sprintf "Parser %s committed but did not consume input." p.Label
         Failure (label, msg, s')
     | Failure (l, m, s') when s'.Committed -> Failure (l, m, s') |> ParseResult.setCommitted s.Committed
@@ -510,7 +529,7 @@ let stringOf2 prefix rest label =
 let parseInt (str: string) =
     match Int32.TryParse str with
     | true, i -> succeed i
-    | _ -> fail ()
+    | _ -> fail <| sprintf "'%s' could not be parsed as an integer." str
 
 /// A parser that parses a single digit as an integer.
 let digit =
