@@ -209,7 +209,7 @@ let mapError (f: string -> string) (p: Parser<_>) =
         fun state ->
             match p.Run state with
             | Success (r, s) -> Success (r, s)
-            | Failure (l, msg, pos) -> Failure (l, f msg, pos) }
+            | Failure (l, msg, s) -> Failure (l, f msg, s) }
 
 type ParserBuilder () =
     member _.Bind ((a: Parser<_>), f) = bind f a
@@ -260,6 +260,20 @@ let check f p =
             | Failure (l, m, s) -> Failure (l, m, s)
             | Success (r, s') when f r -> Success (r, s')
             | Success (r, _) -> ParseResult.failure label state (sprintf "Unexpected %A" r) }
+
+/// Runs a check on the result of a parser, and fails if the check fails.
+/// Uses the specified message constructor on the result to generate the error message.
+let checkMsg toMsg f p =
+    let label = sprintf "check %s" p.Label
+
+    { Label = label
+      Run =
+        fun state ->
+            match p.Run state with
+            | Failure (l, m, s) -> Failure (l, m, s)
+            | Success (r, s') when f r -> Success (r, s')
+            | Success (r, _) -> ParseResult.failure label state (toMsg r) }
+
 
 /// Negates a parser, failing when it succeeds, and succeeding when it fails.
 let neg msg p =

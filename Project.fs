@@ -15,9 +15,17 @@ let indented n p =
 
 let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trailing whitespace"
 
+/// The list of keywords, that cannot be used as identifiers.
+let keywords = [ "print" ]
+
 /// Parses an identifier.
-// TODO: How to not allow parsing a keyword?
-let pIdentifier = stringOf2 alpha alphaNum "identifier"
+// TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+// in a later check?
+let pIdentifier =
+    stringOf2 alpha alphaNum "identifier"
+    |> checkMsg
+        (sprintf "%s is a keyword and not allowed to be used as identifier.")
+        (fun i -> not <| List.contains i keywords)
 
 /// Parses a specific keyword.
 let pKeyword str =
@@ -30,7 +38,6 @@ type StringLiteral = StringLiteral of string
 
 /// Parses a character inside a string liter. Either an unescaped regular character, or an escaped special character.
 let stringEscapedChar =
-    // TODO: Support for unicode
     let reservedChars = [ '"' ; '\\' ]
     let mappedChars =
         Map.ofList [('\\', '\\') ; ('/', '/') ; ('b', '\b') ; ('f', '\f') ; ('n', '\n') ; ('r', '\r') ; ('t', '\t') ]
@@ -107,7 +114,6 @@ module TopLevelStatement =
         let pCall =
             parser {
                 let! name = pIdentifier |> Parser.setLabel "call name"
-                do! commit true
                 do! trailingWhitespace
                 return Call <| SubroutineName name
             } |> Parser.setLabel "pCall"
