@@ -19,13 +19,7 @@ let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trail
 let keywords = [ "print" ]
 
 /// Parses an identifier.
-// TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
-// in a later check?
-let pIdentifier =
-    stringOf2 alpha alphaNum "identifier"
-    |> checkMsg
-        (sprintf "%s is a keyword and not allowed to be used as identifier.")
-        (fun i -> not <| List.contains i keywords)
+let pIdentifier = stringOf2 alpha alphaNum "identifier"
 
 /// Parses a specific keyword.
 let pKeyword str =
@@ -105,6 +99,11 @@ module TopLevelStatement =
                 let! name = pIdentifier |> Parser.setLabel "subroutine name"
                 let! _ = litC ':' |> Parser.setLabel "subroutine name"
                 do! commit true
+                // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+                // in a later check?
+                do! if List.contains name keywords
+                    then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
+                    else succeed ()
                 do! trailingWhitespace
                 let! stmts = plus (skipNext (indented 2 Statement.parser) trailingWhitespace)
                 return Subroutine (SubroutineName name, stmts)
@@ -113,7 +112,15 @@ module TopLevelStatement =
         /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
         let pCall =
             parser {
+                do! ~~(lit "call")
+                do! ~~(star wsNoEol)
                 let! name = pIdentifier |> Parser.setLabel "call name"
+                do! commit true
+                // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+                // in a later check?
+                do! if List.contains name keywords
+                    then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
+                    else succeed ()
                 do! trailingWhitespace
                 return Call <| SubroutineName name
             } |> Parser.setLabel "pCall"
