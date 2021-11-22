@@ -27,31 +27,54 @@ let asmEncodeString (str: string) =
     let _, inStr, r = List.fold step (true, false, "") (List.ofSeq str)
     if inStr then sprintf "%s\"" r else r
 
-/// Writes a data declaration for a statement, given a writing function.
 let writeDecl wl =
     function
+    | PrintStr (StringLiteral (strId, strVal)) ->
+        wl <| sprintf "    txt_%i db %s" strId (asmEncodeString strVal)
+
+/// Writes a data declaration for a top level statement, given a writing function.
+let writeDeclTopLevel wl =
+    function
     | Subroutine (SubroutineName name, stmts) ->
-        failwith "TODO: Implement printing strings from all print statements"
-        // wl <| sprintf "    txt_%s db %s" name (asmEncodeString (sprintf "%s%c" value '\n'))
+        for stmt in stmts do
+            writeDecl wl stmt
+    | Stmt stmt ->
+        writeDecl wl stmt
     | _ -> ()
 
-/// Writes a statement, given a writing function.
 let writeStatement wl =
     function
-    | Subroutine (SubroutineName name, statements) ->
-        wl <| sprintf "_%s:" name
-        failwith("TODO: Implement compiling subroutine's statements")
-        // wl "    mov rax, 1"
-        // wl "    mov rdi, 1"
-        // wl <| sprintf "    mov rsi, txt_%s" name
-        // wl <| sprintf "    mov rdx, %i" (String.length value + 1)
-        // wl "    syscall"
+    | PrintStr (StringLiteral (strId, strVal)) ->
+        wl <| sprintf "    ; PrintStr %s" (asmEncodeString strVal)
+        wl <| sprintf "    mov rsi, txt_%i" strId
+        wl <| sprintf "    mov rdx, %i" (String.length strVal)
+        wl "    call _PrintStr"
+        wl ""
+
+/// Writes a top level statement, given a writing function.
+let writeTopLevelStatement wl =
+    function
+    | Call (SubroutineName name) ->
+        wl <| sprintf "    call __%s" name
+        wl ""
+    | Stmt stmt ->
+        writeStatement wl stmt
+    | Subroutine _ ->
+        // Handled separately, so don't do anything here.
+        ()
+
+/// Writes a subroutine, given a writing function.
+/// These are handled in a separate function, since they need to be after all
+/// regular  statements.
+let writeSubroutine wl =
+    function
+    | Subroutine (SubroutineName name, stmts) ->
+        wl <| sprintf "__%s:" name
+        for stmt in stmts do
+            writeStatement wl stmt
         wl "    ret"
         wl ""
-    | Call (SubroutineName name) ->
-        wl <| sprintf "    call _%s" name
-    | Stmt statement ->
-        failwith("TODO: Implement compiling statements")
+    | _ -> ()
 
 /// Writes the project to x86_64 linux assembly for Nasm.
 let write_x86_64_LinuxNasm fileName (project: Project) =
@@ -62,8 +85,8 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     // Start of data section.
     wl "section .data"
 
-    for decl in Program.subroutines project.Program do
-        writeDecl wl decl
+    for stmt in Program.statements project.Program do
+        writeDeclTopLevel wl stmt
 
     wl ""
 
@@ -72,12 +95,12 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     wl "    global _start"
     wl ""
     wl "_start:"
-    wl ""
     wl "    ;  Entry point."
+    wl ""
 
     // Program statements.
-    for call in Program.calls project.Program do
-        writeStatement wl call
+    for stmt in Program.statements project.Program do
+        writeTopLevelStatement wl stmt
 
     wl ""
     wl "    ; Exit call."
@@ -85,10 +108,18 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     wl "    mov rdi, 0"
     wl "    syscall"
     wl ""
+    wl "_PrintStr:"
+    wl "    ; PrintStr helper. Assumes rsi and rdx have been set before calling."
+    wl "    mov rax, 1"
+    wl "    mov rdi, 1"
+    wl "    syscall"
+    wl "    ret"
+    wl ""
     wl "    ; Subroutines."
+    wl ""
 
     for sr in Program.usedSubroutines project.Program do
-        writeStatement wl sr
+        writeSubroutine wl sr
 
     writer.Close ()
 

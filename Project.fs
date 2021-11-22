@@ -28,7 +28,7 @@ let pKeyword str =
         (peek (neg "A keyword should end with something else than an alphanumeric character" alphaNum))
         |> Parser.setLabel (sprintf "Keyword %s" str)
 
-type StringLiteral = StringLiteral of string
+type StringLiteral = StringLiteral of (int * string)
 
 /// Parses a character inside a string liter. Either an unescaped regular character, or an escaped special character.
 let stringEscapedChar =
@@ -48,13 +48,18 @@ let stringEscapedChar =
         } |> Parser.setLabel "escaped character"
     alt unescapedChar escapedChar
 
+// All strings need to be uniquely identified, this should probably not be done by their
+// actual string value.
+// TODO: Consolidate the same strings to the same identifier?
+let mutable stringCounter = 0
 let pStringLiteral =
     parser {
      do! ~~ (litC '"')
      do! commit true
      let! value = stringOf stringEscapedChar
      do! ~~ (litC '"')
-     return StringLiteral value
+     stringCounter <- stringCounter + 1
+     return StringLiteral (stringCounter, value)
     }
 
 /// The name of a subroutine.
