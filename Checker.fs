@@ -20,8 +20,51 @@ module CheckIssue =
     | CheckError e -> sprintf "Error: %s"  e
     | CheckWarning w -> sprintf "Warning: %s" w
 
+
+type StringIndexes = Map<string, int>
+
+/// Returns the string index for the specified string and the updated set of string literals. If the string was defined
+/// before, this index is returned to prevent allocating a new string.
+let getStringIdx (strings: StringIndexes) str  =
+    match Map.tryFind str strings with
+    | Some idx -> (idx, strings)
+    | None ->
+        let idx = Map.count strings
+        (idx, Map.add str idx strings)
+
+type CheckResult =
+    | Checked of CheckedProject * List<CheckIssue>
+    | Failed of List<CheckIssue>
+
+let private checkProgram (Program stmts) : CheckedProgram =
+    let checkStmt strings (Statement.PrintStr (StringLiteral str)) : CheckedStatement * Map<string, int> =
+        let (idx, strings') = getStringIdx strings str
+        CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings'
+
+    let checkTopStmt strings =
+        function
+        | TopLevelStatement.Subroutine (n, stmts) ->
+            let folder (stmts, strings) stmt =
+                let (stmt', strings') = checkStmt strings stmt
+                (stmt' :: stmts, strings')
+
+            let (stmts', strings') = List.fold folder ([], strings) stmts
+            (CheckedTopLevelStatement.Subroutine (n, List.rev stmts'), strings')
+        | TopLevelStatement.Call n -> (Call n, strings)
+        | TopLevelStatement.Stmt stmt ->
+            let stmt', strings' = checkStmt strings stmt
+            (Stmt stmt', strings')
+
+    let folder (stmts, strings) stmt =
+        let (stmt', strings') = checkTopStmt strings stmt
+        (stmt' :: stmts, strings')
+
+    let (stmts', strings) = List.fold folder ([], Map.empty) stmts
+    { CheckedProgram.Stmts = List.rev stmts' ; Strings = strings }
+
+
 /// Checks a project for issues.
-let check (project: Project) =
+let check (project: Project) : CheckResult =
     let prog = project.Program
 
     let callNames = Program.calls prog |> List.choose TopLevelStatement.name |> Set.ofList
@@ -40,4 +83,8 @@ let check (project: Project) =
         |> Set.toList
         |> List.map (CheckWarning << sprintf "Unused subroutine '%s'." << SubroutineName.value)
 
-    subWarnings @ callErrors
+    if List.isEmpty callErrors then
+        let checkedProgram = checkProgram project.Program
+        Checked ({ Program = checkedProgram ; CheckedProject.Type = project.Type } , subWarnings)
+    else
+        Failed <| subWarnings @ callErrors

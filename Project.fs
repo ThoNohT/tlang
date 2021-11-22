@@ -28,7 +28,8 @@ let pKeyword str =
         (peek (neg "A keyword should end with something else than an alphanumeric character" alphaNum))
         |> Parser.setLabel (sprintf "Keyword %s" str)
 
-type StringLiteral = StringLiteral of (int * string)
+type StringLiteral = StringLiteral of string
+type IndexedStringLiteral = IndexedStringLiteral of int * string
 
 /// Parses a character inside a string liter. Either an unescaped regular character, or an escaped special character.
 let stringEscapedChar =
@@ -48,18 +49,13 @@ let stringEscapedChar =
         } |> Parser.setLabel "escaped character"
     alt unescapedChar escapedChar
 
-// All strings need to be uniquely identified, this should probably not be done by their
-// actual string value.
-// TODO: Consolidate the same strings to the same identifier?
-let mutable stringCounter = 0
 let pStringLiteral =
     parser {
      do! ~~ (litC '"')
      do! commit true
      let! value = stringOf stringEscapedChar
      do! ~~ (litC '"')
-     stringCounter <- stringCounter + 1
-     return StringLiteral (stringCounter, value)
+     return StringLiteral value
     }
 
 /// The name of a subroutine.
@@ -73,6 +69,9 @@ type Statement =
     // Print a string to stdout.
     PrintStr of StringLiteral
 
+type CheckedStatement =
+    PrintStr of IndexedStringLiteral
+
 module Statement =
     let parser =
         parser {
@@ -82,7 +81,7 @@ module Statement =
             do! ~~ (plus ws)
 
             let! value = pStringLiteral
-            return PrintStr value
+            return Statement.PrintStr value
         }
 
 /// A statement that can only appear at the top level of a program.
@@ -93,6 +92,11 @@ type TopLevelStatement =
     | Call of SubroutineName
     // A regular statement.
     | Stmt of Statement
+
+type CheckedTopLevelStatement =
+    | Subroutine of SubroutineName * List<CheckedStatement>
+    | Call of SubroutineName
+    | Stmt of CheckedStatement
 
 module TopLevelStatement =
     /// A parser for a top-level statement.
@@ -111,7 +115,7 @@ module TopLevelStatement =
                     else succeed ()
                 do! trailingWhitespace
                 let! stmts = plus (skipNext (indented 2 Statement.parser) trailingWhitespace)
-                return Subroutine (SubroutineName name, stmts)
+                return TopLevelStatement.Subroutine (SubroutineName name, stmts)
             }
 
         /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
@@ -127,48 +131,79 @@ module TopLevelStatement =
                     then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                     else succeed ()
                 do! trailingWhitespace
-                return Call <| SubroutineName name
+                return TopLevelStatement.Call <| SubroutineName name
             } |> Parser.setLabel "pCall"
 
-        let pStatement = skipNext Statement.parser trailingWhitespace |> map Stmt
+        let pStatement = skipNext Statement.parser trailingWhitespace |> map TopLevelStatement.Stmt
 
         oneOfc [ pSubroutine ; pCall ; pStatement ] |> Parser.setLabel "statement"
 
-    let subroutine =
+    let subroutine  =
         function
-        | ((Subroutine _) as s) -> Some s
+        | ((TopLevelStatement.Subroutine _) as s) -> Some s
         | _ -> None
 
     let call =
         function
-        | ((Call _) as c) -> Some c
+        | ((TopLevelStatement.Call _) as c) -> Some c
         | _ -> None
 
     /// Get the name of a subroutine referenced in a statement.
     let name =
         function
-        | Subroutine (name, _) -> Some name
-        | Call name -> Some name
+        | TopLevelStatement.Subroutine (name, _) -> Some name
+        | TopLevelStatement.Call name -> Some name
+        | _ -> None
+
+module CheckedTopLevelStatement =
+    let subroutine  =
+        function
+        | ((CheckedTopLevelStatement.Subroutine _) as s) -> Some s
+        | _ -> None
+
+    let call =
+        function
+        | ((CheckedTopLevelStatement.Call _) as c) -> Some c
+        | _ -> None
+
+    /// Get the name of a subroutine referenced in a statement.
+    let name =
+        function
+        | CheckedTopLevelStatement.Subroutine (name, _) -> Some name
+        | CheckedTopLevelStatement.Call name -> Some name
         | _ -> None
 
 
 type Program = Program of List<TopLevelStatement>
+type CheckedProgram = {
+    Stmts: List<CheckedTopLevelStatement>
+    Strings: Map<string, int>
+}
 
 module Program =
-    let subroutines (Program stmts) = List.choose TopLevelStatement.subroutine stmts
+    let parser =
+        let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
+        let between = star emptyLine |> Parser.setLabel "between"
+        separated1 between TopLevelStatement.parser |> map Program.Program |> Parser.setLabel "program"
+
+    let subroutines (Program stmts)= List.choose TopLevelStatement.subroutine stmts
     let calls (Program stmts) = List.choose TopLevelStatement.call stmts
-    let statements (Program stmts) = stmts
+    let statements (Program stmts)= stmts
 
     /// Returns all subroutines that are actually called.
     let usedSubroutines program =
         let callNames = calls program |> List.map TopLevelStatement.name |> Set.ofList
         subroutines program |> List.filter (fun stmt -> Set.contains (TopLevelStatement.name stmt) callNames)
 
-    let parser =
-        let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
-        let between = star emptyLine |> Parser.setLabel "between"
-        separated1 between TopLevelStatement.parser |> map Program |> Parser.setLabel "program"
+module CheckedProgram =
+    let subroutines prog = List.choose CheckedTopLevelStatement.subroutine prog.Stmts
+    let calls prog = List.choose CheckedTopLevelStatement.call prog.Stmts
+    let statements prog = prog.Stmts
 
+    /// Returns all subroutines that are actually called.
+    let usedSubroutines program =
+        let callNames = calls program |> List.map CheckedTopLevelStatement.name |> Set.ofList
+        subroutines program |> List.filter (fun stmt -> Set.contains (CheckedTopLevelStatement.name stmt) callNames)
 
 /// The different types of projects that can be defined.
 type ProjectType =
@@ -188,6 +223,7 @@ module ProjectType =
 
 /// A complete project parsed from a file.
 type Project = { Type: ProjectType ; Program: Program }
+type CheckedProject = { Type: ProjectType ; Program: CheckedProgram }
 
 module Project =
     /// A parser for a project. A project is defined as:
@@ -202,5 +238,5 @@ module Project =
             do! ~~ (star <| skipNext (star wsNoEol) eol ) |> Parser.setLabel "trailing white lines"
             do! eoi |> Parser.setLabel "End of project"
 
-            return { Type = typ ; Program = prog }
+            return { Project.Type = typ ; Program = prog }
         }

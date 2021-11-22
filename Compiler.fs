@@ -2,6 +2,7 @@ module tlang.Compiler
 
 open System
 open System.IO
+open System.Collections.Generic
 open tlang.Console
 open tlang.Parser
 open tlang.Project
@@ -27,24 +28,12 @@ let asmEncodeString (str: string) =
     let _, inStr, r = List.fold step (true, false, "") (List.ofSeq str)
     if inStr then sprintf "%s\"" r else r
 
-let writeDecl wl =
-    function
-    | PrintStr (StringLiteral (strId, strVal)) ->
-        wl <| sprintf "    txt_%i db %s" strId (asmEncodeString strVal)
-
-/// Writes a data declaration for a top level statement, given a writing function.
-let writeDeclTopLevel wl =
-    function
-    | Subroutine (SubroutineName name, stmts) ->
-        for stmt in stmts do
-            writeDecl wl stmt
-    | Stmt stmt ->
-        writeDecl wl stmt
-    | _ -> ()
+let writeDecl wl (kvp: KeyValuePair<string, int>) =
+        wl <| sprintf "    txt_%i db %s" kvp.Value (asmEncodeString kvp.Key)
 
 let writeStatement wl =
     function
-    | PrintStr (StringLiteral (strId, strVal)) ->
+    | PrintStr (IndexedStringLiteral (strId, strVal)) ->
         wl <| sprintf "    ; PrintStr %s" (asmEncodeString strVal)
         wl <| sprintf "    mov rsi, txt_%i" strId
         wl <| sprintf "    mov rdx, %i" (String.length strVal)
@@ -77,7 +66,7 @@ let writeSubroutine wl =
     | _ -> ()
 
 /// Writes the project to x86_64 linux assembly for Nasm.
-let write_x86_64_LinuxNasm fileName (project: Project) =
+let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     let writer = new StreamWriter (fileName, false)
 
     let wl (str: string) = writer.WriteLine str
@@ -85,8 +74,8 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     // Start of data section.
     wl "section .data"
 
-    for stmt in Program.statements project.Program do
-        writeDeclTopLevel wl stmt
+    for str in project.Program.Strings do
+        writeDecl wl str
 
     wl ""
 
@@ -99,10 +88,9 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     wl ""
 
     // Program statements.
-    for stmt in Program.statements project.Program do
+    for stmt in CheckedProgram.statements project.Program do
         writeTopLevelStatement wl stmt
 
-    wl ""
     wl "    ; Exit call."
     wl "    mov rax, 60"
     wl "    mov rdi, 0"
@@ -118,7 +106,7 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
     wl "    ; Subroutines."
     wl ""
 
-    for sr in Program.usedSubroutines project.Program do
+    for sr in CheckedProgram.usedSubroutines project.Program do
         writeSubroutine wl sr
 
     writer.Close ()
@@ -142,27 +130,33 @@ let compile inputFile =
     let (Executable projectName) = project.Type
 
     /// Check for issues.
-    let issues = check project
-    if not <| List.isEmpty issues then printfn "Issues found:\n"
-    for issue in issues do eprintfn "%s" (CheckIssue.toString issue)
-    if List.exists CheckIssue.isError issues then Environment.Exit 1
+    match check project with
+    | Failed issues ->
+        printfn "Issues found:\n"
+        for issue in issues do eprintfn "%s" (CheckIssue.toString issue)
+        Environment.Exit 1
+        failwith "Unreachable"
 
-    /// Determine file names.
-    let asmFile = sprintf "%s.asm" projectName
-    let oFile = sprintf "%s.o" projectName
-    let exeFile = sprintf "%s" projectName
+    | Checked (project', warnings) ->
+        if not <| List.isEmpty warnings then printfn "Issues found:\n"
+        for warning in warnings do eprintfn "%s" (CheckIssue.toString warning)
 
-    /// Write nasm.
-    printfn "Generating %s" asmFile
-    write_x86_64_LinuxNasm (sprintf "%s.asm" projectName) project
+        /// Determine file names.
+        let asmFile = sprintf "%s.asm" projectName
+        let oFile = sprintf "%s.o" projectName
+        let exeFile = sprintf "%s" projectName
 
-    /// Compile nasm.
-    runCmdEchoed [ "nasm" ; "-f" ; "elf64" ; "-o" ; oFile ; asmFile ]
+        /// Write nasm.
+        printfn "Generating %s" asmFile
+        write_x86_64_LinuxNasm (sprintf "%s.asm" projectName) project'
 
-    /// Link file.
-    runCmdEchoed [ "ld" ; oFile ; "-o" ; exeFile ]
+        /// Compile nasm.
+        runCmdEchoed [ "nasm" ; "-f" ; "elf64" ; "-o" ; oFile ; asmFile ]
 
-    exeFile
+        /// Link file.
+        runCmdEchoed [ "ld" ; oFile ; "-o" ; exeFile ]
+
+        exeFile
 
 /// Cleans up files for the project from the specified file.
 let cleanup inputFile includeExe =
