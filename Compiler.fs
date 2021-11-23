@@ -39,18 +39,9 @@ let writeStatement wl =
         wl <| sprintf "    mov rdx, %i" (String.length strVal)
         wl "    call _PrintStr"
         wl ""
-
-/// Writes a top level statement, given a writing function.
-let writeTopLevelStatement wl =
-    function
     | Call (SubroutineName name) ->
         wl <| sprintf "    call __%s" name
         wl ""
-    | Stmt stmt ->
-        writeStatement wl stmt
-    | Subroutine _ ->
-        // Handled separately, so don't do anything here.
-        ()
 
 /// Writes a subroutine, given a writing function.
 /// These are handled in a separate function, since they need to be after all
@@ -89,7 +80,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
 
     // Program statements.
     for stmt in CheckedProgram.statements project.Program do
-        writeTopLevelStatement wl stmt
+        writeStatement wl stmt
 
     wl "    ; Exit call."
     wl "    mov rax, 60"

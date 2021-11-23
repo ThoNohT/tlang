@@ -10,14 +10,14 @@ type SubroutineName = SubroutineName of string
 /// A statement that can happen either on top level or in a subroutine.
 type Statement =
     // Print a string to stdout.
-    PrintStr of StringLiteral
+    | PrintStr of StringLiteral
+    // Call a subroutine.
+    | Call of SubroutineName
 
 /// A statement that can only appear at the top level of a program.
 type TopLevelStatement =
     // Defines a new subroutine.
     | Subroutine of SubroutineName * List<Statement>
-    // Calls a subroutine.
-    | Call of SubroutineName
     // A regular statement.
     | Stmt of Statement
 
@@ -38,11 +38,11 @@ type Project = { Type: ProjectType ; Program: Program }
 type IndexedStringLiteral = IndexedStringLiteral of int * string
 
 type CheckedStatement =
-    PrintStr of IndexedStringLiteral
+    | PrintStr of IndexedStringLiteral
+    | Call of SubroutineName
 
 type CheckedTopLevelStatement =
     | Subroutine of SubroutineName * List<CheckedStatement>
-    | Call of SubroutineName
     | Stmt of CheckedStatement
 
 type CheckedProgram = {
@@ -68,7 +68,8 @@ let indented n p =
     }
     |> Parser.setLabel (sprintf "%i indented %s" n p.Label)
 
-let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trailing whitespace"
+/// Parses zero or more whitespace followed by the end of a line.
+let trailingWhitespace = ~~(skipPrev (star wsNoEol) eol) |> Parser.setLabel "Trailing whitespace"
 
 /// Takes a parser and accepts zero or more whitespaces after it.
 let followedByWs p = skipNext p (star wsNoEol)
@@ -115,17 +116,31 @@ let pStringLiteral =
     }
 
 let statementParser =
-    parser {
-        do! followedByWs <| pKeyword "print"
-        do! commit true
+    let pPrintStr =
+        parser {
+            do! followedByWs <| pKeyword "print"
+            do! commit true
 
-        let! value = pStringLiteral
-        return Statement.PrintStr value
-    }
+            let! value = pStringLiteral
+            return Statement.PrintStr value
+        }
+
+    let pCall =
+        parser {
+            do! followedByWs <| pKeyword "call"
+            do! commit true
+            let! name = pIdentifier |> Parser.setLabel "call name"
+            // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+            // in a later check?
+            do! if List.contains name keywords
+                then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
+                else succeed ()
+            return Statement.Call <| SubroutineName name
+        } |> Parser.setLabel "pCall"
+
+    altc pPrintStr pCall |> Parser.setLabel "statement"
 
 let topLevelStatementParser =
-    /// A parser for a subroutine. Must be the name of the subroutine, followed by a colon.
-    /// Then on the lines below, indented by 2 characters, the text to display for this routine.
     let pSubroutine =
         parser {
             let! name = pIdentifier |> Parser.setLabel "subroutine name"
@@ -141,24 +156,10 @@ let topLevelStatementParser =
             return TopLevelStatement.Subroutine (SubroutineName name, stmts)
         }
 
-    /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
-    let pCall =
-        parser {
-            do! followedByWs <| pKeyword "call"
-            do! commit true
-            let! name = pIdentifier |> Parser.setLabel "call name"
-            // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
-            // in a later check?
-            do! if List.contains name keywords
-                then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
-                else succeed ()
-            do! trailingWhitespace
-            return TopLevelStatement.Call <| SubroutineName name
-        } |> Parser.setLabel "pCall"
 
-    let pStatement = skipNext statementParser trailingWhitespace |> map TopLevelStatement.Stmt
+    let pStatement = skipNext statementParser trailingWhitespace |> map TopLevelStatement.Stmt |> dump
 
-    oneOfc [ pSubroutine ; pCall ; pStatement ] |> Parser.setLabel "statement"
+    altc pSubroutine pStatement |> Parser.setLabel "top level statement"
 
 let programParser =
     let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
@@ -193,22 +194,51 @@ let projectParser =
 module SubroutineName =
     let value (SubroutineName name) = name
 
+module Statement =
+    let call =
+        function
+        | ((Statement.Call _) as c) -> Some c
+        | _ -> None
+
+    /// Get the name of a subroutine referenced in a statement.
+    let name =
+        function
+        | Statement.Call name -> Some name
+        | _ -> None
+
+module CheckedStatement =
+    let call =
+        function
+        | ((CheckedStatement.Call _) as c) -> Some c
+        | _ -> None
+
+    /// Get the name of a subroutine referenced in a statement.
+    let name =
+        function
+        | CheckedStatement.Call name -> Some name
+        | _ -> None
+
 module TopLevelStatement =
     let subroutine  =
         function
         | ((TopLevelStatement.Subroutine _) as s) -> Some s
         | _ -> None
 
-    let call =
+    /// Returns all statements in a subroutine, or an empty list if it is not a subroutine.
+    let subroutineStatements =
         function
-        | ((TopLevelStatement.Call _) as c) -> Some c
+        | (TopLevelStatement.Subroutine (_, stmts)) -> stmts
+        | _ -> []
+
+    let statement =
+        function
+        | TopLevelStatement.Stmt stmt -> Some stmt
         | _ -> None
 
     /// Get the name of a subroutine referenced in a statement.
     let name =
         function
         | TopLevelStatement.Subroutine (name, _) -> Some name
-        | TopLevelStatement.Call name -> Some name
         | _ -> None
 
 module CheckedTopLevelStatement =
@@ -217,35 +247,48 @@ module CheckedTopLevelStatement =
         | ((CheckedTopLevelStatement.Subroutine _) as s) -> Some s
         | _ -> None
 
-    let call =
-        function
-        | ((CheckedTopLevelStatement.Call _) as c) -> Some c
-        | _ -> None
-
     /// Get the name of a subroutine referenced in a statement.
     let name =
         function
         | CheckedTopLevelStatement.Subroutine (name, _) -> Some name
-        | CheckedTopLevelStatement.Call name -> Some name
+        | _ -> None
+
+    /// Returns all statements in a subroutine, or an empty list if it is not a subroutine.
+    let subroutineStatements =
+        function
+        | (CheckedTopLevelStatement.Subroutine (_, stmts)) -> stmts
+        | _ -> []
+
+    let statement =
+        function
+        | CheckedTopLevelStatement.Stmt stmt -> Some stmt
         | _ -> None
 
 module Program =
-    let subroutines (Program stmts)= List.choose TopLevelStatement.subroutine stmts
-    let calls (Program stmts) = List.choose TopLevelStatement.call stmts
-    let statements (Program stmts)= stmts
+    let subroutines (Program stmts) = List.choose TopLevelStatement.subroutine stmts
+    let statements (Program stmts) = List.choose TopLevelStatement.statement stmts
+
+    /// Returns all calls to subroutines that are made in the program.
+    let calls program =
+        let stmts = statements program
+        let directCalls = List.choose Statement.call stmts
+        let subroutineStatements =
+            subroutines program |> List.collect TopLevelStatement.subroutineStatements |> List.choose Statement.call
+
+        directCalls @ subroutineStatements
 
     /// Returns all subroutines that are actually called.
     let usedSubroutines program =
-        let callNames = calls program |> List.map TopLevelStatement.name |> Set.ofList
+        let callNames = calls program |> List.map Statement.name |> Set.ofList
         subroutines program |> List.filter (fun stmt -> Set.contains (TopLevelStatement.name stmt) callNames)
 
 module CheckedProgram =
     let subroutines prog = List.choose CheckedTopLevelStatement.subroutine prog.Stmts
-    let calls prog = List.choose CheckedTopLevelStatement.call prog.Stmts
-    let statements prog = prog.Stmts
+    let statements prog = List.choose CheckedTopLevelStatement.statement prog.Stmts
+    let calls prog = List.choose CheckedStatement.call (statements prog)
 
     /// Returns all subroutines that are actually called.
     let usedSubroutines program =
-        let callNames = calls program |> List.map CheckedTopLevelStatement.name |> Set.ofList
+        let callNames = calls program |> List.map CheckedStatement.name |> Set.ofList
         subroutines program |> List.filter (fun stmt -> Set.contains (CheckedTopLevelStatement.name stmt) callNames)
 

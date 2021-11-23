@@ -37,9 +37,12 @@ type CheckResult =
     | Failed of List<CheckIssue>
 
 let private checkProgram (Program stmts) : CheckedProgram =
-    let checkStmt strings (Statement.PrintStr (StringLiteral str)) : CheckedStatement * Map<string, int> =
-        let (idx, strings') = getStringIdx strings str
-        CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings'
+    let checkStmt strings : Statement -> CheckedStatement * Map<string, int> =
+        function
+        | Statement.PrintStr (StringLiteral str) ->
+            let (idx, strings') = getStringIdx strings str
+            CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings'
+        | Statement.Call n -> Call n, strings
 
     let checkTopStmt strings =
         function
@@ -50,7 +53,6 @@ let private checkProgram (Program stmts) : CheckedProgram =
 
             let (stmts', strings') = List.fold folder ([], strings) stmts
             (CheckedTopLevelStatement.Subroutine (n, List.rev stmts'), strings')
-        | TopLevelStatement.Call n -> (Call n, strings)
         | TopLevelStatement.Stmt stmt ->
             let stmt', strings' = checkStmt strings stmt
             (Stmt stmt', strings')
@@ -67,12 +69,13 @@ let private checkProgram (Program stmts) : CheckedProgram =
 let check (project: Project) : CheckResult =
     let prog = project.Program
 
-    let callNames = Program.calls prog |> List.choose TopLevelStatement.name |> Set.ofList
+    let callNames = Program.calls prog |> List.choose Statement.name |> Set.ofList
     let subNames = Program.subroutines prog |> List.choose TopLevelStatement.name |> Set.ofList
 
     let undefinedCalls = Set.difference callNames subNames
     let unusedSubs = Set.difference subNames callNames
 
+    // TODO: A subroutine can be called from itself, or another uncalled subroutine.
     let callErrors =
         undefinedCalls
         |> Set.toList
