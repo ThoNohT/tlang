@@ -83,7 +83,7 @@ let pIdentifier = stringOf2 alpha alphaNum "identifier"
 let pKeyword str =
     skipNext
         (lit str)
-        (peek (neg "A keyword should end with something else than an alphanumeric character" alphaNum))
+        (peek (neg "A keyword should be followe by something else than an alphanumeric character" alphaNum))
         |> Parser.setLabel (sprintf "Keyword %s" str)
         |> map ignore
 
