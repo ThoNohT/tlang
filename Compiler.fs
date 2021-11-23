@@ -113,7 +113,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
 
 /// Parses an input file to a Project.
 let parseProject inputFile =
-    let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> Project.parser.Run
+    let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> projectParser.Run
 
     match parseResult with
     | Failure (l, m, s) ->

@@ -2,6 +2,61 @@ module tlang.Project
 
 open tlang.Parser
 
+////////// Model //////////
+
+type StringLiteral = StringLiteral of string
+
+/// The name of a subroutine.
+type SubroutineName = SubroutineName of string
+
+/// A statement that can happen either on top level or in a subroutine.
+type Statement =
+    // Print a string to stdout.
+    PrintStr of StringLiteral
+
+/// A statement that can only appear at the top level of a program.
+type TopLevelStatement =
+    // Defines a new subroutine.
+    | Subroutine of SubroutineName * List<Statement>
+    // Calls a subroutine.
+    | Call of SubroutineName
+    // A regular statement.
+    | Stmt of Statement
+
+type Program = Program of List<TopLevelStatement>
+
+/// The different types of projects that can be defined.
+type ProjectType =
+    /// An executable gets compiled into an executable file and cannot be referenced.
+    /// The parameter is the name of the executable.
+    | Executable of string
+
+/// A complete project parsed from a file.
+type Project = { Type: ProjectType ; Program: Program }
+
+
+////////// Checked Model //////////
+
+type IndexedStringLiteral = IndexedStringLiteral of int * string
+
+type CheckedStatement =
+    PrintStr of IndexedStringLiteral
+
+type CheckedTopLevelStatement =
+    | Subroutine of SubroutineName * List<CheckedStatement>
+    | Call of SubroutineName
+    | Stmt of CheckedStatement
+
+type CheckedProgram = {
+    Stmts: List<CheckedTopLevelStatement>
+    Strings: Map<string, int>
+}
+
+type CheckedProject = { Type: ProjectType ; Program: CheckedProgram }
+
+
+////////// Parser //////////
+
 /// A parser that parses a full line, and also consumes the newline.
 let pFullLine = skipNext (takeWhile ((<>) '\n')) (litC '\n')
 
@@ -27,9 +82,6 @@ let pKeyword str =
         (lit str)
         (peek (neg "A keyword should end with something else than an alphanumeric character" alphaNum))
         |> Parser.setLabel (sprintf "Keyword %s" str)
-
-type StringLiteral = StringLiteral of string
-type IndexedStringLiteral = IndexedStringLiteral of int * string
 
 /// Parses a character inside a string liter. Either an unescaped regular character, or an escaped special character.
 let stringEscapedChar =
@@ -58,86 +110,89 @@ let pStringLiteral =
      return StringLiteral value
     }
 
-/// The name of a subroutine.
-type SubroutineName = SubroutineName of string
+let statementParser =
+    parser {
+        do! ~~ (pKeyword "print")
+        do! commit true
+
+        do! ~~ (plus ws)
+
+        let! value = pStringLiteral
+        return Statement.PrintStr value
+    }
+
+let topLevelStatementParser =
+    /// A parser for a subroutine. Must be the name of the subroutine, followed by a colon.
+    /// Then on the lines below, indented by 2 characters, the text to display for this routine.
+    let pSubroutine =
+        parser {
+            let! name = pIdentifier |> Parser.setLabel "subroutine name"
+            let! _ = litC ':' |> Parser.setLabel "subroutine name"
+            do! commit true
+            // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+            // in a later check?
+            do! if List.contains name keywords
+                then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
+                else succeed ()
+            do! trailingWhitespace
+            let! stmts = plus (skipNext (indented 2 statementParser) trailingWhitespace)
+            return TopLevelStatement.Subroutine (SubroutineName name, stmts)
+        }
+
+    /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
+    let pCall =
+        parser {
+            do! ~~(lit "call")
+            do! ~~(star wsNoEol)
+            let! name = pIdentifier |> Parser.setLabel "call name"
+            do! commit true
+            // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+            // in a later check?
+            do! if List.contains name keywords
+                then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
+                else succeed ()
+            do! trailingWhitespace
+            return TopLevelStatement.Call <| SubroutineName name
+        } |> Parser.setLabel "pCall"
+
+    let pStatement = skipNext statementParser trailingWhitespace |> map TopLevelStatement.Stmt
+
+    oneOfc [ pSubroutine ; pCall ; pStatement ] |> Parser.setLabel "statement"
+
+let programParser =
+    let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
+    let between = star emptyLine |> Parser.setLabel "between"
+    separated1 between topLevelStatementParser |> map Program.Program |> Parser.setLabel "program"
+
+let projectTypeParser =
+    parser {
+        let! _ = lit "Executable: "
+        let! name = pIdentifier |> Parser.setLabel "project name"
+        return Executable name
+    }
+
+/// A parser for a project. A project is defined as:
+/// Line 1: The type,
+/// Line 2: A separator of at least one '-',
+/// The rest: The program
+let projectParser =
+    parser {
+        let! typ = line projectTypeParser |> Parser.setLabel "project type"
+        let! _ = plus (litC '-') |> line |> Parser.setLabel "separator"
+        let! prog = programParser
+        do! ~~ (star <| skipNext (star wsNoEol) eol ) |> Parser.setLabel "trailing white lines"
+        do! eoi |> Parser.setLabel "End of project"
+
+        return { Project.Type = typ ; Program = prog }
+    }
+
+
+////////// Operations //////////
 
 module SubroutineName =
     let value (SubroutineName name) = name
 
-/// A statement that can happen either on top level or in a subroutine.
-type Statement =
-    // Print a string to stdout.
-    PrintStr of StringLiteral
-
-type CheckedStatement =
-    PrintStr of IndexedStringLiteral
-
-module Statement =
-    let parser =
-        parser {
-            do! ~~ (pKeyword "print")
-            do! commit true
-
-            do! ~~ (plus ws)
-
-            let! value = pStringLiteral
-            return Statement.PrintStr value
-        }
-
-/// A statement that can only appear at the top level of a program.
-type TopLevelStatement =
-    // Defines a new subroutine.
-    | Subroutine of SubroutineName * List<Statement>
-    // Calls a subroutine.
-    | Call of SubroutineName
-    // A regular statement.
-    | Stmt of Statement
-
-type CheckedTopLevelStatement =
-    | Subroutine of SubroutineName * List<CheckedStatement>
-    | Call of SubroutineName
-    | Stmt of CheckedStatement
-
 module TopLevelStatement =
-    /// A parser for a top-level statement.
-    let parser =
-        /// A parser for a subroutine. Must be the name of the subroutine, followed by a colon.
-        /// Then on the lines below, indented by 2 characters, the text to display for this routine.
-        let pSubroutine =
-            parser {
-                let! name = pIdentifier |> Parser.setLabel "subroutine name"
-                let! _ = litC ':' |> Parser.setLabel "subroutine name"
-                do! commit true
-                // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
-                // in a later check?
-                do! if List.contains name keywords
-                    then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
-                    else succeed ()
-                do! trailingWhitespace
-                let! stmts = plus (skipNext (indented 2 Statement.parser) trailingWhitespace)
-                return TopLevelStatement.Subroutine (SubroutineName name, stmts)
-            }
-
-        /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
-        let pCall =
-            parser {
-                do! ~~(lit "call")
-                do! ~~(star wsNoEol)
-                let! name = pIdentifier |> Parser.setLabel "call name"
-                do! commit true
-                // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
-                // in a later check?
-                do! if List.contains name keywords
-                    then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
-                    else succeed ()
-                do! trailingWhitespace
-                return TopLevelStatement.Call <| SubroutineName name
-            } |> Parser.setLabel "pCall"
-
-        let pStatement = skipNext Statement.parser trailingWhitespace |> map TopLevelStatement.Stmt
-
-        oneOfc [ pSubroutine ; pCall ; pStatement ] |> Parser.setLabel "statement"
-
     let subroutine  =
         function
         | ((TopLevelStatement.Subroutine _) as s) -> Some s
@@ -173,19 +228,7 @@ module CheckedTopLevelStatement =
         | CheckedTopLevelStatement.Call name -> Some name
         | _ -> None
 
-
-type Program = Program of List<TopLevelStatement>
-type CheckedProgram = {
-    Stmts: List<CheckedTopLevelStatement>
-    Strings: Map<string, int>
-}
-
 module Program =
-    let parser =
-        let emptyLine = skipPrev (star wsNoEol) eol |> Parser.setLabel "emptyLine"
-        let between = star emptyLine |> Parser.setLabel "between"
-        separated1 between TopLevelStatement.parser |> map Program.Program |> Parser.setLabel "program"
-
     let subroutines (Program stmts)= List.choose TopLevelStatement.subroutine stmts
     let calls (Program stmts) = List.choose TopLevelStatement.call stmts
     let statements (Program stmts)= stmts
@@ -205,38 +248,3 @@ module CheckedProgram =
         let callNames = calls program |> List.map CheckedTopLevelStatement.name |> Set.ofList
         subroutines program |> List.filter (fun stmt -> Set.contains (CheckedTopLevelStatement.name stmt) callNames)
 
-/// The different types of projects that can be defined.
-type ProjectType =
-    /// An executable gets compiled into an executable file and cannot be referenced.
-    /// The parameter is the name of the executable.
-    | Executable of string
-
-
-module ProjectType =
-    let parser =
-        parser {
-            let! _ = lit "Executable: "
-            let! name = pIdentifier |> Parser.setLabel "project name"
-            return Executable name
-        }
-
-
-/// A complete project parsed from a file.
-type Project = { Type: ProjectType ; Program: Program }
-type CheckedProject = { Type: ProjectType ; Program: CheckedProgram }
-
-module Project =
-    /// A parser for a project. A project is defined as:
-    /// Line 1: The type,
-    /// Line 2: A separator of at least one '-',
-    /// The rest: The program
-    let parser =
-        parser {
-            let! typ = line ProjectType.parser |> Parser.setLabel "project type"
-            let! _ = plus (litC '-') |> line |> Parser.setLabel "separator"
-            let! prog = Program.parser
-            do! ~~ (star <| skipNext (star wsNoEol) eol ) |> Parser.setLabel "trailing white lines"
-            do! eoi |> Parser.setLabel "End of project"
-
-            return { Project.Type = typ ; Program = prog }
-        }
