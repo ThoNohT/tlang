@@ -1,7 +1,5 @@
 module tlang.Project
 
-open tlang.Parser
-
 ////////// Model //////////
 
 type StringLiteral = StringLiteral of string
@@ -57,6 +55,8 @@ type CheckedProject = { Type: ProjectType ; Program: CheckedProgram }
 
 ////////// Parser //////////
 
+open tlang.Parser
+
 /// A parser that parses a full line, and also consumes the newline.
 let pFullLine = skipNext (takeWhile ((<>) '\n')) (litC '\n')
 
@@ -70,8 +70,11 @@ let indented n p =
 
 let trailingWhitespace = ~~(skipPrev (star space) eol) |> Parser.setLabel "Trailing whitespace"
 
+/// Takes a parser and accepts zero or more whitespaces after it.
+let followedByWs p = skipNext p (star wsNoEol)
+
 /// The list of keywords, that cannot be used as identifiers.
-let keywords = [ "print" ]
+let keywords = [ "print" ; "call" ]
 
 /// Parses an identifier.
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
@@ -82,6 +85,7 @@ let pKeyword str =
         (lit str)
         (peek (neg "A keyword should end with something else than an alphanumeric character" alphaNum))
         |> Parser.setLabel (sprintf "Keyword %s" str)
+        |> map ignore
 
 /// Parses a character inside a string liter. Either an unescaped regular character, or an escaped special character.
 let stringEscapedChar =
@@ -112,10 +116,8 @@ let pStringLiteral =
 
 let statementParser =
     parser {
-        do! ~~ (pKeyword "print")
+        do! followedByWs <| pKeyword "print"
         do! commit true
-
-        do! ~~ (plus ws)
 
         let! value = pStringLiteral
         return Statement.PrintStr value
@@ -142,10 +144,9 @@ let topLevelStatementParser =
     /// A parser for a call. Must be the name of the subroutine, as the only thing on the line (excluding trailing space).
     let pCall =
         parser {
-            do! ~~(lit "call")
-            do! ~~(star wsNoEol)
-            let! name = pIdentifier |> Parser.setLabel "call name"
+            do! followedByWs <| pKeyword "call"
             do! commit true
+            let! name = pIdentifier |> Parser.setLabel "call name"
             // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
             // in a later check?
             do! if List.contains name keywords
