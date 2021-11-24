@@ -97,7 +97,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     wl "    ; Subroutines."
     wl ""
 
-    for sr in CheckedProgram.usedSubroutines project.Program do
+    for sr in CheckedProgram.subroutines project.Program do
         writeSubroutine wl sr
 
     writer.Close ()

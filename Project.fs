@@ -157,7 +157,7 @@ let topLevelStatementParser =
         }
 
 
-    let pStatement = skipNext statementParser trailingWhitespace |> map TopLevelStatement.Stmt |> dump
+    let pStatement = skipNext statementParser trailingWhitespace |> map TopLevelStatement.Stmt
 
     altc pSubroutine pStatement |> Parser.setLabel "top level statement"
 
@@ -206,18 +206,6 @@ module Statement =
         | Statement.Call name -> Some name
         | _ -> None
 
-module CheckedStatement =
-    let call =
-        function
-        | ((CheckedStatement.Call _) as c) -> Some c
-        | _ -> None
-
-    /// Get the name of a subroutine referenced in a statement.
-    let name =
-        function
-        | CheckedStatement.Call name -> Some name
-        | _ -> None
-
 module TopLevelStatement =
     let subroutine  =
         function
@@ -247,18 +235,6 @@ module CheckedTopLevelStatement =
         | ((CheckedTopLevelStatement.Subroutine _) as s) -> Some s
         | _ -> None
 
-    /// Get the name of a subroutine referenced in a statement.
-    let name =
-        function
-        | CheckedTopLevelStatement.Subroutine (name, _) -> Some name
-        | _ -> None
-
-    /// Returns all statements in a subroutine, or an empty list if it is not a subroutine.
-    let subroutineStatements =
-        function
-        | (CheckedTopLevelStatement.Subroutine (_, stmts)) -> stmts
-        | _ -> []
-
     let statement =
         function
         | CheckedTopLevelStatement.Stmt stmt -> Some stmt
@@ -277,18 +253,7 @@ module Program =
 
         directCalls @ subroutineStatements
 
-    /// Returns all subroutines that are actually called.
-    let usedSubroutines program =
-        let callNames = calls program |> List.map Statement.name |> Set.ofList
-        subroutines program |> List.filter (fun stmt -> Set.contains (TopLevelStatement.name stmt) callNames)
-
 module CheckedProgram =
     let subroutines prog = List.choose CheckedTopLevelStatement.subroutine prog.Stmts
     let statements prog = List.choose CheckedTopLevelStatement.statement prog.Stmts
-    let calls prog = List.choose CheckedStatement.call (statements prog)
-
-    /// Returns all subroutines that are actually called.
-    let usedSubroutines program =
-        let callNames = calls program |> List.map CheckedStatement.name |> Set.ofList
-        subroutines program |> List.filter (fun stmt -> Set.contains (CheckedTopLevelStatement.name stmt) callNames)
 

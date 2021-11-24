@@ -64,6 +64,36 @@ let private checkProgram (Program stmts) : CheckedProgram =
     let (stmts', strings) = List.fold folder ([], Map.empty) stmts
     { CheckedProgram.Stmts = List.rev stmts' ; Strings = strings }
 
+/// Determine the names of all unused subroutines. Starts by marking all subroutines as unused, then collects the
+/// subroutines that are directly called, and marks them as used. Every subroutine that is used yields more statements
+/// that can be checked that indirectly use other subroutines. Stop when there are no more statements to check.
+let unusedSubs program =
+    let subroutines = Program.subroutines program
+    let mutable unusedSoFar = subroutines |> List.choose TopLevelStatement.name |> Set.ofList
+
+    let mutable stmtsToCheck = Program.statements program
+    let mutable cnt = true
+    while cnt do
+        cnt <-
+            match stmtsToCheck with
+            | [] -> false
+            | x :: xs ->
+                match Statement.call x with
+                | Some (Statement.Call n) when Set.contains n unusedSoFar ->
+                    unusedSoFar <- Set.remove n unusedSoFar
+                    let newStmts =
+                        match List.find (fun s -> TopLevelStatement.name s = Some n) subroutines with
+                        | (TopLevelStatement.Subroutine (_, subStmts)) -> subStmts
+                        | _ -> []
+
+                    stmtsToCheck <- xs @ newStmts
+                    true
+
+                | _ ->
+                    stmtsToCheck <- xs
+                    true
+
+    unusedSoFar
 
 /// Checks a project for issues.
 let check (project: Project) : CheckResult =
@@ -71,18 +101,15 @@ let check (project: Project) : CheckResult =
 
     let callNames = Program.calls prog |> List.choose Statement.name |> Set.ofList
     let subNames = Program.subroutines prog |> List.choose TopLevelStatement.name |> Set.ofList
-
     let undefinedCalls = Set.difference callNames subNames
-    let unusedSubs = Set.difference subNames callNames
 
-    // TODO: A subroutine can be called from itself, or another uncalled subroutine.
     let callErrors =
         undefinedCalls
         |> Set.toList
         |> List.map (CheckError << sprintf "Call to undefined subroutine '%s'." << SubroutineName.value)
 
     let subWarnings =
-        unusedSubs
+        unusedSubs prog
         |> Set.toList
         |> List.map (CheckWarning << sprintf "Unused subroutine '%s'." << SubroutineName.value)
 
