@@ -22,47 +22,61 @@ module CheckIssue =
 
 
 type StringIndexes = Map<string, int>
+type VariableOffsets = Map<string, int>
 
 /// Returns the string index for the specified string and the updated set of string literals. If the string was defined
 /// before, this index is returned to prevent allocating a new string.
-let getStringIdx (strings: StringIndexes) str  =
+let getStringIdx (strings: StringIndexes) str =
     match Map.tryFind str strings with
     | Some idx -> (idx, strings)
     | None ->
         let idx = Map.count strings
         (idx, Map.add str idx strings)
 
+/// Returns the offset for the specified variable name and the updated set of variable offsets. If the variable was
+/// defined before, this offset is returned.
+// TODO: Probably prevent assigning to the same variable multiple times.
+let getVariableOffset (variables: VariableOffsets) name =
+    match Map.tryFind name variables with
+    | Some idx -> (idx, variables)
+    | None ->
+        let idx = Map.count variables
+        (idx, Map.add name idx variables)
+
 type CheckResult =
     | Checked of CheckedProject * List<CheckIssue>
     | Failed of List<CheckIssue>
 
 let private checkProgram (Program stmts) : CheckedProgram =
-    let checkStmt strings : Statement -> CheckedStatement * Map<string, int> =
+    let checkStmt strings variables : Statement -> CheckedStatement * StringIndexes * VariableOffsets =
         function
         | Statement.PrintStr (StringLiteral str) ->
             let (idx, strings') = getStringIdx strings str
-            CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings'
-        | Statement.Call n -> Call n, strings
+            CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings', variables
+        | Statement.Call n -> Call n, strings, variables
+        | Statement.Assignment ((Variable n), value) ->
+            let (offset, variables') = getVariableOffset variables n
+            CheckedStatement.Assignment (OffsetVariable (offset, n), value), strings, variables'
 
-    let checkTopStmt strings =
+    let checkTopStmt strings variables =
         function
         | TopLevelStatement.Subroutine (n, stmts) ->
-            let folder (stmts, strings) stmt =
-                let (stmt', strings') = checkStmt strings stmt
-                (stmt' :: stmts, strings')
+            let folder (stmts, strings, variables) stmt =
+                let stmt', strings', variables' = checkStmt strings variables stmt
+                (stmt' :: stmts, strings', variables')
 
-            let (stmts', strings') = List.fold folder ([], strings) stmts
-            (CheckedTopLevelStatement.Subroutine (n, List.rev stmts'), strings')
+            let stmts', strings', variables' = List.fold folder ([], strings, variables) stmts
+            (CheckedTopLevelStatement.Subroutine (n, List.rev stmts'), strings', variables')
         | TopLevelStatement.Stmt stmt ->
-            let stmt', strings' = checkStmt strings stmt
-            (Stmt stmt', strings')
+            let stmt', strings', variables' = checkStmt strings variables stmt
+            Stmt stmt', strings', variables'
 
-    let folder (stmts, strings) stmt =
-        let (stmt', strings') = checkTopStmt strings stmt
-        (stmt' :: stmts, strings')
+    let folder (stmts, strings, variables) stmt =
+        let stmt', strings', variables' = checkTopStmt strings variables stmt
+        stmt' :: stmts, strings', variables'
 
-    let (stmts', strings) = List.fold folder ([], Map.empty) stmts
-    { CheckedProgram.Stmts = List.rev stmts' ; Strings = strings }
+    let (stmts', strings, variables) = List.fold folder ([], Map.empty, Map.empty) stmts
+    { CheckedProgram.Stmts = List.rev stmts' ; Strings = strings ; Variables = variables }
 
 /// Determine the names of all unused subroutines. Starts by marking all subroutines as unused, then collects the
 /// subroutines that are directly called, and marks them as used. Every subroutine that is used yields more statements

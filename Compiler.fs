@@ -29,7 +29,7 @@ let asmEncodeString (str: string) =
     if inStr then sprintf "%s\"" r else r
 
 let writeDecl wl (kvp: KeyValuePair<string, int>) =
-        wl <| sprintf "    txt_%i db %s" kvp.Value (asmEncodeString kvp.Key)
+        wl <| sprintf "txt_%i db %s" kvp.Value (asmEncodeString kvp.Key)
 
 let writeStatement wl =
     function
@@ -38,10 +38,14 @@ let writeStatement wl =
         wl <| sprintf "    mov rsi, txt_%i" strId
         wl <| sprintf "    mov rdx, %i" (String.length strVal)
         wl "    call _PrintStr"
-        wl ""
     | Call (SubroutineName name) ->
         wl <| sprintf "    call __%s" name
-        wl ""
+    | Assignment ((OffsetVariable (offset, name)), intVal) ->
+        wl <| sprintf "    ; Assignment %s, %i" name intVal
+        wl "    mov rax, mem"
+        wl <| sprintf "    mov ebx, %d" intVal // Note that ebx is the 32 bit version of rbx, which is all we need for ints now.
+        wl <| sprintf "    add rax, %d" (offset * 4)
+        wl "    mov [rax], ebx"
 
 /// Writes a subroutine, given a writing function.
 /// These are handled in a separate function, since they need to be after all
@@ -52,8 +56,8 @@ let writeSubroutine wl =
         wl <| sprintf "__%s:" name
         for stmt in stmts do
             writeStatement wl stmt
+            wl ""
         wl "    ret"
-        wl ""
     | _ -> ()
 
 /// Writes the project to x86_64 linux assembly for Nasm.
@@ -62,13 +66,6 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
 
     let wl (str: string) = writer.WriteLine str
 
-    // Start of data section.
-    wl "section .data"
-
-    for str in project.Program.Strings do
-        writeDecl wl str
-
-    wl ""
 
     // Start of program.
     wl "section .text"
@@ -81,6 +78,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     // Program statements.
     for stmt in CheckedProgram.statements project.Program do
         writeStatement wl stmt
+        wl ""
 
     wl "    ; Exit call."
     wl "    mov rax, 60"
@@ -99,6 +97,20 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
 
     for sr in CheckedProgram.subroutines project.Program do
         writeSubroutine wl sr
+        wl ""
+
+    // Start of data section.
+    wl "section .data"
+
+    for str in project.Program.Strings do
+        writeDecl wl str
+
+    // Start of memory section
+    wl ""
+    wl "segment .bss"
+    // Every variable is a 32 bit int for now, so we need 4 bytes to store each.
+    if not <|  Map.isEmpty project.Program.Variables then
+        wl <| sprintf "mem: resb %d" (Map.count project.Program.Variables * 4)
 
     writer.Close ()
 

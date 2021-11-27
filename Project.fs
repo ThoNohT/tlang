@@ -7,12 +7,17 @@ type StringLiteral = StringLiteral of string
 /// The name of a subroutine.
 type SubroutineName = SubroutineName of string
 
+/// A variable.
+type Variable = Variable of string
+
 /// A statement that can happen either on top level or in a subroutine.
 type Statement =
     // Print a string to stdout.
     | PrintStr of StringLiteral
     // Call a subroutine.
     | Call of SubroutineName
+    // Assignment of an int to a variable.
+    | Assignment of Variable * int
 
 /// A statement that can only appear at the top level of a program.
 type TopLevelStatement =
@@ -37,9 +42,12 @@ type Project = { Type: ProjectType ; Program: Program }
 
 type IndexedStringLiteral = IndexedStringLiteral of int * string
 
+type OffsetVariable = OffsetVariable of int * string
+
 type CheckedStatement =
     | PrintStr of IndexedStringLiteral
     | Call of SubroutineName
+    | Assignment of OffsetVariable * int
 
 type CheckedTopLevelStatement =
     | Subroutine of SubroutineName * List<CheckedStatement>
@@ -48,6 +56,7 @@ type CheckedTopLevelStatement =
 type CheckedProgram = {
     Stmts: List<CheckedTopLevelStatement>
     Strings: Map<string, int>
+    Variables: Map<string, int>
 }
 
 type CheckedProject = { Type: ProjectType ; Program: CheckedProgram }
@@ -75,7 +84,7 @@ let trailingWhitespace = ~~(skipPrev (star wsNoEol) eol) |> Parser.setLabel "Tra
 let followedByWs p = skipNext p (star wsNoEol)
 
 /// The list of keywords, that cannot be used as identifiers.
-let keywords = [ "print" ; "call" ]
+let keywords = [ "print" ; "call" ; "let" ]
 
 /// Parses an identifier.
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
@@ -136,9 +145,25 @@ let statementParser =
                 then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                 else succeed ()
             return Statement.Call <| SubroutineName name
-        } |> Parser.setLabel "pCall"
+        } |> Parser.setLabel "call"
 
-    altc pPrintStr pCall |> Parser.setLabel "statement"
+
+    let pAssignment =
+        parser {
+            do! followedByWs <| pKeyword "let"
+            do! commit true
+            let! name = pIdentifier |> followedByWs |> Parser.setLabel "variable name"
+            // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
+            // in a later check?
+            do! if List.contains name keywords
+                then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
+                else succeed ()
+            do! ~~(followedByWs <| litC '=')
+            let! value = nonNegativeInt
+            return Statement.Assignment (Variable name, value)
+        } |> Parser.setLabel "assignment"
+
+    oneOfc [ pPrintStr ; pCall ; pAssignment ] |> Parser.setLabel "statement"
 
 let topLevelStatementParser =
     let pSubroutine =
