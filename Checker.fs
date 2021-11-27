@@ -53,6 +53,9 @@ let private checkProgram (Program stmts) : CheckedProgram =
         | Statement.PrintStr (StringLiteral str) ->
             let (idx, strings') = getStringIdx strings str
             CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings', variables
+        | Statement.PrintVar (Variable n) ->
+            let (offset, variables') = getVariableOffset variables n
+            CheckedStatement.PrintVar (OffsetVariable (offset, n)), strings, variables'
         | Statement.Call n -> Call n, strings, variables
         | Statement.Assignment ((Variable n), value) ->
             let (offset, variables') = getVariableOffset variables n

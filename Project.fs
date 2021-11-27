@@ -14,9 +14,11 @@ type Variable = Variable of string
 type Statement =
     // Print a string to stdout.
     | PrintStr of StringLiteral
+    // Print the int64 value in a variable.
+    | PrintVar of Variable
     // Call a subroutine.
     | Call of SubroutineName
-    // Assignment of an int to a variable.
+    // Assignment of an int64 to a variable.
     | Assignment of Variable * int64
 
 /// A statement that can only appear at the top level of a program.
@@ -46,6 +48,7 @@ type OffsetVariable = OffsetVariable of int * string
 
 type CheckedStatement =
     | PrintStr of IndexedStringLiteral
+    | PrintVar of OffsetVariable
     | Call of SubroutineName
     | Assignment of OffsetVariable * int64
 
@@ -124,14 +127,19 @@ let pStringLiteral =
      return StringLiteral value
     }
 
+
+type Printable = PrintableStr of StringLiteral | PrintableVar of Variable
+
 let statementParser =
-    let pPrintStr =
+    let pPrint =
         parser {
             do! followedByWs <| pKeyword "print"
             do! commit true
 
-            let! value = pStringLiteral
-            return Statement.PrintStr value
+            let! printable = altc (map PrintableStr pStringLiteral) (map (Variable >> PrintableVar) pIdentifier)
+            return match printable with
+                   | PrintableStr value -> Statement.PrintStr value
+                   | PrintableVar var -> Statement.PrintVar var
         }
 
     let pCall =
@@ -159,11 +167,11 @@ let statementParser =
                 then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                 else succeed ()
             do! ~~(followedByWs <| litC '=')
-            let! value = nonNegativeInt64
+            let! value = fullInt64
             return Statement.Assignment (Variable name, value)
         } |> Parser.setLabel "assignment"
 
-    oneOfc [ pPrintStr ; pCall ; pAssignment ] |> Parser.setLabel "statement"
+    oneOfc [ pPrint ; pCall ; pAssignment ] |> Parser.setLabel "statement"
 
 let topLevelStatementParser =
     let pSubroutine =

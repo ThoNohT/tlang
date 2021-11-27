@@ -38,6 +38,12 @@ let writeStatement wl =
         wl <| sprintf "    mov rsi, txt_%i" strId
         wl <| sprintf "    mov rdx, %i" (String.length strVal)
         wl "    call _PrintStr"
+    | PrintVar (OffsetVariable (offset, name)) ->
+        wl <| sprintf "    ; PrintVar %s" name
+        wl <| "    mov rax, mem"
+        wl <| sprintf "    add rax, %d" (offset * 8)
+        wl <| sprintf "    mov rdi, [rax]"
+        wl "    call _printInt64"
     | Call (SubroutineName name) ->
         wl <| sprintf "    call __%s" name
     | Assignment ((OffsetVariable (offset, name)), intVal) ->
@@ -46,6 +52,81 @@ let writeStatement wl =
         wl <| sprintf "    mov rbx, %d" intVal
         wl <| sprintf "    add rax, %d" (offset * 8)
         wl "    mov [rax], rbx"
+
+/// Writes code to print an int64 to stdout. This code is generated from some c code.
+let writePrintInt64 wl =
+    wl "_printInt64:"
+    wl "    ; printInt64 helper, assumes rdi has been set."
+    wl "    push rbp"
+    wl "    mov rbp, rsp"
+    wl "    sub rsp, 64"
+    wl "    mov QWORD [rbp-56], rdi"
+    wl "    mov QWORD [rbp-8], 1"
+    wl "    mov rax, QWORD [rbp-56]"
+    wl "    shr rax, 63"
+    wl "    mov BYTE [rbp-9], al"
+    wl "    cmp BYTE [rbp-9], 0"
+    wl "    je .L2"
+    wl "    neg QWORD [rbp-56]"
+    wl ".L2:"
+    wl "    mov eax, 33"
+    wl "    sub rax, QWORD [rbp-8]"
+    wl "    mov BYTE [rbp-48+rax], 10"
+    wl ".L3:"
+    wl "    mov rcx, QWORD [rbp-56]"
+    wl "    mov rdx, 7378697629483820647"
+    wl "    mov rax, rcx"
+    wl "    imul rdx"
+    wl "    mov rax, rdx"
+    wl "    sar rax, 2"
+    wl "    mov rsi, rcx"
+    wl "    sar rsi, 63"
+    wl "    sub rax, rsi"
+    wl "    mov rdx, rax"
+    wl "    mov rax, rdx"
+    wl "    sal rax, 2"
+    wl "    add rax, rdx"
+    wl "    add rax, rax"
+    wl "    sub rcx, rax"
+    wl "    mov rdx, rcx"
+    wl "    mov eax, edx"
+    wl "    lea edx, [rax+48]"
+    wl "    mov eax, 32"
+    wl "    sub rax, QWORD [rbp-8]"
+    wl "    mov BYTE [rbp-48+rax], dl"
+    wl "    add QWORD [rbp-8], 1"
+    wl "    mov rcx, QWORD [rbp-56]"
+    wl "    mov rdx, 7378697629483820647"
+    wl "    mov rax, rcx"
+    wl "    imul rdx"
+    wl "    mov rax, rdx"
+    wl "    sar rax, 2"
+    wl "    sar rcx, 63"
+    wl "    mov rdx, rcx"
+    wl "    sub rax, rdx"
+    wl "    mov QWORD [rbp-56], rax"
+    wl "    cmp QWORD [rbp-56], 0"
+    wl "    jne .L3"
+    wl "    cmp BYTE [rbp-9], 0"
+    wl "    je .L4"
+    wl "    mov eax, 32"
+    wl "    sub rax, QWORD [rbp-8]"
+    wl "    mov BYTE [rbp-48+rax], 45"
+    wl "    add QWORD [rbp-8], 1"
+    wl ".L4:"
+    wl "    mov eax, 33"
+    wl "    sub rax, QWORD [rbp-8]"
+    wl "    lea rdx, [rbp-48]"
+    wl "    lea rcx, [rdx+rax]"
+    wl "    mov rax, QWORD [rbp-8]"
+    wl "    mov rdx, rax"
+    wl "    mov rsi, rcx"
+    wl "    mov edi, 1"
+    wl "    mov rax, 1"
+    wl "    syscall"
+    wl "    nop"
+    wl "    leave"
+    wl "    ret"
 
 /// Writes a subroutine, given a writing function.
 /// These are handled in a separate function, since they need to be after all
@@ -65,7 +146,6 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     let writer = new StreamWriter (fileName, false)
 
     let wl (str: string) = writer.WriteLine str
-
 
     // Start of program.
     wl "section .text"
@@ -91,6 +171,8 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     wl "    mov rdi, 1"
     wl "    syscall"
     wl "    ret"
+    wl ""
+    writePrintInt64 wl
     wl ""
     wl "    ; Subroutines."
     wl ""
