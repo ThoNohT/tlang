@@ -574,3 +574,21 @@ let nonNegativeInt64 =
         return! parseInt64 ds
     }
     |> Parser.setLabel "nonNegativeInt"
+
+/// A parser that parses a integer.
+let fullInt =
+    parser {
+        let! pre = optional <| lit "-"
+        let! ds = stringOf1 num
+        return! parseInt <| Option.defaultValue "" pre + ds
+    }
+    |> Parser.setLabel "nonNegativeInt"
+
+/// A parser that parses a 64-bit integer.
+let fullInt64 =
+    parser {
+        let! pre = optional <| lit "-"
+        let! ds = stringOf1 num
+        return! parseInt64 <| Option.defaultValue "" pre + ds
+    }
+    |> Parser.setLabel "nonNegativeInt"
