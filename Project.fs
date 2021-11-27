@@ -17,7 +17,7 @@ type Statement =
     // Call a subroutine.
     | Call of SubroutineName
     // Assignment of an int to a variable.
-    | Assignment of Variable * int
+    | Assignment of Variable * int64
 
 /// A statement that can only appear at the top level of a program.
 type TopLevelStatement =
@@ -47,7 +47,7 @@ type OffsetVariable = OffsetVariable of int * string
 type CheckedStatement =
     | PrintStr of IndexedStringLiteral
     | Call of SubroutineName
-    | Assignment of OffsetVariable * int
+    | Assignment of OffsetVariable * int64
 
 type CheckedTopLevelStatement =
     | Subroutine of SubroutineName * List<CheckedStatement>
@@ -159,7 +159,7 @@ let statementParser =
                 then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                 else succeed ()
             do! ~~(followedByWs <| litC '=')
-            let! value = nonNegativeInt
+            let! value = nonNegativeInt64
             return Statement.Assignment (Variable name, value)
         } |> Parser.setLabel "assignment"
 

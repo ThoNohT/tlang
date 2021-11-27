@@ -43,9 +43,9 @@ let writeStatement wl =
     | Assignment ((OffsetVariable (offset, name)), intVal) ->
         wl <| sprintf "    ; Assignment %s, %i" name intVal
         wl "    mov rax, mem"
-        wl <| sprintf "    mov ebx, %d" intVal // Note that ebx is the 32 bit version of rbx, which is all we need for ints now.
-        wl <| sprintf "    add rax, %d" (offset * 4)
-        wl "    mov [rax], ebx"
+        wl <| sprintf "    mov rbx, %d" intVal
+        wl <| sprintf "    add rax, %d" (offset * 8)
+        wl "    mov [rax], rbx"
 
 /// Writes a subroutine, given a writing function.
 /// These are handled in a separate function, since they need to be after all
@@ -108,9 +108,8 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     // Start of memory section
     wl ""
     wl "segment .bss"
-    // Every variable is a 32 bit int for now, so we need 4 bytes to store each.
-    if not <|  Map.isEmpty project.Program.Variables then
-        wl <| sprintf "mem: resb %d" (Map.count project.Program.Variables * 4)
+    if not <| Map.isEmpty project.Program.Variables then
+        wl <| sprintf "mem: resb %d" (Map.count project.Program.Variables * 8) // 64 bit int = 8 bytes.
 
     writer.Close ()
 

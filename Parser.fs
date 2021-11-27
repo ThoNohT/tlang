@@ -545,6 +545,12 @@ let parseInt (str: string) =
     | true, i -> succeed i
     | _ -> fail <| sprintf "'%s' could not be parsed as an integer." str
 
+/// Returns a parser that succeeds when the specified string is an integer, and returns this integer.
+let parseInt64 (str: string) =
+    match Int64.TryParse str with
+    | true, i -> succeed i
+    | _ -> fail <| sprintf "'%s' could not be parsed as an integer." str
+
 /// A parser that parses a single digit as an integer.
 let digit =
     parser {
@@ -558,5 +564,13 @@ let nonNegativeInt =
     parser {
         let! ds = stringOf1 num
         return! parseInt ds
+    }
+    |> Parser.setLabel "nonNegativeInt"
+
+/// A parser that parses a non-negative 64-bit integer.
+let nonNegativeInt64 =
+    parser {
+        let! ds = stringOf1 num
+        return! parseInt64 ds
     }
     |> Parser.setLabel "nonNegativeInt"
