@@ -47,6 +47,13 @@ let testConditionWithUsageError compilerName condition error =
     else
         ()
 
+/// Checks a condition, and if it fails, displays the specified error and then exits with exit code 1.
+let testCondition condition error =
+    if not condition then
+        printErr error
+    else
+        ()
+
 /// Performs an action, if the action throws an exception, the exception
 /// message is shown and the application exits with exit code 1.
 let handleError failureMsg action =
