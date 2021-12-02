@@ -7,6 +7,7 @@ open tlang.Console
 open tlang.Parser
 open tlang.Project
 open tlang.Checker
+open tlang.Lexer
 
 module Syscall =
     let idReg = "rax"
@@ -180,6 +181,13 @@ let parseProject inputFile =
 /// Compiles the project from the specified file.
 /// Returns the name of the generated executable.
 let compile inputFile =
+    let inputStr = File.ReadAllText inputFile
+    let tkns = lexFile keywords inputFile inputStr
+
+    printfn "%A" tkns
+
+    Environment.Exit 0
+
     let project = parseProject inputFile
     let (Executable projectName) = project.Type
 

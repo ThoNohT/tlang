@@ -87,7 +87,7 @@ let trailingWhitespace = ~~(skipPrev (star wsNoEol) eol) |> Parser.setLabel "Tra
 let followedByWs p = skipNext p (star wsNoEol)
 
 /// The list of keywords, that cannot be used as identifiers.
-let keywords = [ "print" ; "call" ; "let" ]
+let keywords = [ "executable" ; "print" ; "call" ; "let" ] |> Set.ofList
 
 /// Parses an identifier.
 let pIdentifier = stringOf2 alpha alphaNum "identifier"
@@ -96,7 +96,7 @@ let pIdentifier = stringOf2 alpha alphaNum "identifier"
 let pKeyword str =
     skipNext
         (lit str)
-        (peek (neg "A keyword should be followe by something else than an alphanumeric character" alphaNum))
+        (peek (neg "A keyword should be followed by something else than an alphanumeric character" alphaNum))
         |> Parser.setLabel (sprintf "Keyword %s" str)
         |> map ignore
 
@@ -149,7 +149,7 @@ let statementParser =
             let! name = pIdentifier |> Parser.setLabel "call name"
             // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
             // in a later check?
-            do! if List.contains name keywords
+            do! if Set.contains name keywords
                 then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                 else succeed ()
             return Statement.Call <| SubroutineName name
@@ -163,7 +163,7 @@ let statementParser =
             let! name = pIdentifier |> followedByWs |> Parser.setLabel "variable name"
             // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
             // in a later check?
-            do! if List.contains name keywords
+            do! if Set.contains name keywords
                 then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                 else succeed ()
             do! ~~(followedByWs <| litC '=')
@@ -181,7 +181,7 @@ let topLevelStatementParser =
             do! commit true
             // TODO: Do we want recognition of keywords embedded this deeply in the parser or performed
             // in a later check?
-            do! if List.contains name keywords
+            do! if Set.contains name keywords
                 then fail <| sprintf "%s is a keyword and cannot be used as an identifier." name
                 else succeed ()
             do! trailingWhitespace

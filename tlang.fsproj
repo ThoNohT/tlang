@@ -6,6 +6,7 @@
   <ItemGroup>
     <Compile Include="Prelude.fs" />
     <Compile Include="Console.fs" />
+    <Compile Include="Lexer.fs" />
     <Compile Include="Parser.fs" />
     <Compile Include="Project.fs" />
     <Compile Include="Checker.fs" />

@@ -1,5 +1,7 @@
 module tlang.Lexer
 
+open System
+
 /// A position for a token.
 type Position = { Line: int ; Col: int }
 type Range = { File: string ; StartLine: int ; StartCol: int ; EndLine: int ; EndCol: int }
@@ -8,14 +10,14 @@ module Range =
     let fromPositions file startPos endPos =
            { File = file
              StartLine = startPos.Line ; StartCol = startPos.Col
-             EndLine = endPos.Line ; endCol = endPos.Col
+             EndLine = endPos.Line ; EndCol = endPos.Col
            }
 
 type TokenData =
     | IndentationToken of int
     | KeywordToken of string
     | IdentifierToken of string
-    | SymbolToken of char
+    | SymbolToken of string
     | StringLiteralToken of string
     | NumberToken of int64
     | SeparatorToken
@@ -45,8 +47,9 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
     // but that is not exposed. The only way this could be an issue if there are carriage returns without line feeds,
     // and then I feel that strange results are justified.
     let sanitizedInput = input.Replace("\r", "")
+    let mutable startOfLine = true
     let mutable tokens = []
-    let mutable spacesPerIndent = NotDetermined
+    let mutable spacesPerIndent = None
     let mutable index = 0
     let mutable prevPos = { Line = 0 ; Col = 0 }
     let mutable pos = { Line = 0 ; Col = 0 }
@@ -54,7 +57,7 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
     let mutable atEndOfInput = false
 
     // Custom version of Char.isWhitespace that excludes the newline character.
-    let isWhitespace c = Char.isWhitespace c && c <> '\n'
+    let isWhitespace c = Char.IsWhiteSpace c && c <> '\n'
 
     let curChar () = sanitizedInput.[index]
 
@@ -62,8 +65,13 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
     let nextChar () =
         prevPos <- pos
         match curChar () with
-        | '\n' -> pos <- { Line = pos.Line + 1 ; Col = 0 }
-        | _ -> pos <- { pos | Col = pos.Col + 1 }
+        | '\n' ->
+            pos <- { Line = pos.Line + 1 ; Col = 0 }
+            startOfLine <- true
+        | _ ->
+            pos <- { pos with Col = pos.Col + 1 }
+            startOfLine <- false
+
         index <- index + 1
         if index = sanitizedInput.Length then atEndOfInput <- true
 
@@ -75,7 +83,7 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
         let tkn = {
             Range = Range.fromPositions filename oldPos prevPos
             WhitespaceBefore = whitespaceBefore
-            date = tnkData
+            Data = tknData
         }
         whitespaceBefore <- false
         tokens <- tkn :: tokens
@@ -104,17 +112,17 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
             let oldIndex = index
             while not atEndOfInput && isWhitespace <| curChar () do
                 nextChar ()
-                checkLexerPredicate (c = ' ') "Leading whitespace may only consist of spaces."
+                checkLexerPredicate (curChar () = ' ') "Leading whitespace may only consist of spaces."
 
             spacesPerIndent <- Some <| index - oldIndex
-            addToken <| IndentationToken 1
+            addToken oldPos <| IndentationToken 1
         | Some spi ->
             // The number of spaces per indent is known, so take a multiple of this number of spaces, and return this
             // as the indent level.
             let oldIndex = index
             while not atEndOfInput && isWhitespace <| curChar () do
                 nextChar ()
-                checkLexerPredicate (c = ' ') "Leading whitespace may only consist of spaces."
+                checkLexerPredicate (curChar () = ' ') "Leading whitespace may only consist of spaces."
 
             let nSpaces = index - oldIndex
             let extraSpace = nSpaces % spi
@@ -123,16 +131,15 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
                         "Invalid number of leading spaces. Expected a multiple of"
                         spi nSpaces extraSpace (spi - extraSpace)
             checkLexerPredicate (extraSpace = 0) msg
-            let identLevel = int <|
-            addToken <| IndentationToken (nSpaces / sp)
+            addToken oldPos <| IndentationToken (nSpaces / spi)
 
     // Lexes a number, simply a token with a value as long as the characters are numeric.
     let lexNumber () =
         let oldPos = pos
         let oldIndex = index
-        while not atEndOfInput && Char.isDigit <| curChar () do nextChar ()
+        while not atEndOfInput && Char.IsDigit <| curChar () do nextChar ()
         let nrStr = input.[oldIndex .. index - 1]
-        let nr = tryWithErrorReporting "Failed to parse a number." (int64.Parse nrStr)
+        let nr = tryWithErrorReporting "Failed to parse a number." (fun () -> Int64.Parse nrStr)
         addToken oldPos (NumberToken nr)
 
     // Lexes an identifier, consumes characters as long as they are alphanumeric.
@@ -141,9 +148,9 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
     let lexIdentifier () =
         let oldPos = pos
         let oldIndex = index
-        while not atEndOfInput && (Char.isDigit <| curChar () || Char.isAlpha curChar ()) do nextChar ()
+        while not atEndOfInput && Char.IsLetterOrDigit <| curChar () do nextChar ()
         let name = input.[oldIndex .. index - 1]
-        if Set.contains name keywords then addToken oldPos <| KeywordToken name
+        if Set.contains (name.ToLowerInvariant ()) keywords then addToken oldPos <| KeywordToken name
         else addToken oldPos <| IdentifierToken name
 
     // Lexes a string literal.
@@ -155,23 +162,32 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
             checkLexerPredicate (not atEndOfInput) "Input ended before escaped character in string literal ended."
 
         let assertDigit c =
-            checkLexerPredicate (Char.isDigit c) "Invalid escaped character."
+            checkLexerPredicate (Char.IsDigit c) "Invalid escaped character."
 
         // An escaped character can either be one of the characters defined in mappedChars or a unicode value.
         let lexEscapedCharacter () =
             nextChar ()
             assertNotAtEnd ()
             let c = curChar ()
-            match Map.tryGet c mappedChars with
+            match Map.tryFind c mappedChars with
             // A mapped character.
             | Some mc -> mc
             // If not, it has to be a unicode character.
             | None ->
                 assertDigit c
-                nextChar () ; assertNotAtEnd () ; let d2 = curChar () ; assertDigit d2
-                nextChar () ; assertNotAtEnd () ; let d3 = curChar () ; assertDigit d3
-                nextChar () ; assertNotAtEnd () ; let d4 = curChar () ; assertDigit d4
-                char <| (int.Parse c) * 1000 + (int.Parse d2) * 100 + (int.Parse d3) * 10 + (int.Parse d4)
+                nextChar ()
+                assertNotAtEnd ()
+                let d2 = curChar ()
+                assertDigit d2
+                nextChar ()
+                assertNotAtEnd ()
+                let d3 = curChar ()
+                assertDigit d3
+                nextChar ()
+                assertNotAtEnd ()
+                let d4 = curChar ()
+                assertDigit d4
+                char <| (int c) * 1000 + (int d2) * 100 + (int d3) * 10 + (int d4)
 
         let oldPos = pos
 
@@ -179,13 +195,14 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
         nextChar ()
 
         // Parse string characters until we reached the closing quote.
-        let sb = StringBuilder ()
+        let sb = System.Text.StringBuilder ()
         while not atEndOfInput && curChar () <> '"' do
             let c = curChar ()
             if c = '\\' then
-                sb.Append <| lexEscapedCharacter ()
+                sb.Append (lexEscapedCharacter ())
             else
-                sb.Append c
+                sb.Append (c)
+            |> ignore
 
             // Move to the next character.
             nextChar ()
@@ -199,15 +216,15 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
     // Lexes any other symbol, continues as long as non word/digit/whitespace characters are encountered. Can also start
     // checking a comment or a separator.
     let lexSymbol () =
-        let isSymbolChar c = not Char.isWhitespace c && not Char.isDigit c && not Char.isWord c
+        let isSymbolChar c = not <| Char.IsWhiteSpace c && not <| Char.IsLetterOrDigit c
         let oldPos = pos
         let oldIndex = index
         nextChar ()
 
         let lexRegularSymbol () =
-            while not atEndOfInput && isSymbolChar (curChar ()) do nextChar
+            while not atEndOfInput && isSymbolChar (curChar ()) do nextChar ()
             let symbolStr = sanitizedInput.[oldIndex .. index - 1]
-            addToken oldPos SymbolToken symbolStr
+            addToken oldPos <| SymbolToken symbolStr
 
         match curChar () with
         | '-' ->
@@ -224,7 +241,7 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
                 if not atEndOfInput then nextChar ()
             else lexRegularSymbol ()
 
-        | c -> lexRegularSymbol ()
+        | _ -> lexRegularSymbol ()
 
     while not atEndOfInput do
         match curChar () with
@@ -232,14 +249,15 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
         | c when isWhitespace c ->
             whitespaceBefore <- true
             while not atEndOfInput && isWhitespace <| curChar () do nextChar ()
-        | c when Char.isDigit c -> lexNumber ()
-        | c when Char.isAlpha c -> lexIdentifier ()
+        | c when Char.IsDigit c -> lexNumber ()
+        | c when Char.IsLetter c -> lexIdentifier ()
         | c when c = '"' -> lexStringLiteral ()
-        | c when c '\n' ->
+        | c when c = '\n' ->
             addToken pos EndOfLineToken
             nextChar ()
-        | c -> lexSymbol ()
+        | _ -> lexSymbol ()
+        |> ignore
 
-    addToken EndOfInputToken
-    Lidst.rev tokens
+    addToken pos EndOfInputToken
+    List.rev tokens
 
