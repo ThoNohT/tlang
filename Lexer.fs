@@ -7,11 +7,11 @@ type Position = { Line: int ; Col: int }
 type Range = { File: string ; StartLine: int ; StartCol: int ; EndLine: int ; EndCol: int }
 
 module Range =
-    let fromPositions file startPos endPos =
-           { File = file
-             StartLine = startPos.Line ; StartCol = startPos.Col
-             EndLine = endPos.Line ; EndCol = endPos.Col
-           }
+    let fromPositions file startPos endPos = {
+        File = file
+        StartLine = startPos.Line ; StartCol = startPos.Col
+        EndLine = endPos.Line ; EndCol = endPos.Col
+    }
 
 type TokenData =
     | IndentationToken of int
@@ -36,7 +36,7 @@ type Token = {
     /// If a token follows an IndentationToken, then any whitespace that is part of the IndentationToken does not count
     /// as whitespace before the token.
     WhitespaceBefore: bool
-    }
+}
 
 /// Lexes a full file into a list of tokens.
 /// keywords: These words are identified as keywords, other words are considered identifiers.
