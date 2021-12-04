@@ -4,15 +4,36 @@ open System
 
 /// A position for a token.
 type Position = { Line: int ; Col: int }
+
+module Position =
+    /// Convert a position to a human readable string.
+    let toString pos = sprintf "Line %i, col %i" (pos.Line + 1) (pos.Col + 1)
+
+    /// Initial position
+    let zero = { Line = 0 ; Col = 0 }
+
+/// Tokens, or program elements typically consist of more than a single character. This type encodes the start and end
+/// locations, including the file in which it is declared.
 type Range = { File: string ; StartLine: int ; StartCol: int ; EndLine: int ; EndCol: int }
 
 module Range =
+    /// Converts a range to a string that points to a the starting position of the range in its file.
+    let toString range = sprintf "%s:%i:%i" range.File range.StartLine range.StartCol
+
+    /// Creates a range from a file and a start- and end position.
     let fromPositions file startPos endPos = {
         File = file
         StartLine = startPos.Line ; StartCol = startPos.Col
         EndLine = endPos.Line ; EndCol = endPos.Col
     }
 
+    /// Get the start position of a range.
+    let startPos range = { Line = range.StartLine ; Col = range.StartCol }
+
+    /// Get the end position of a range.
+    let endPos range = { Line = range.EndLine ; Col = range.EndCol }
+
+/// Encodes all the different types of tokens, with their data.
 type TokenData =
     | IndentationToken of int
     | KeywordToken of string
@@ -24,7 +45,8 @@ type TokenData =
     | EndOfLineToken
     | EndOfInputToken
 
-/// A token produced by the lexer.
+/// A token produced by the lexer, adds information about the token's location and whether it was preceded by
+/// whitespace.
 type Token = {
     /// The range over which this token spans.
     Range: Range
