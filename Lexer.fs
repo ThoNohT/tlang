@@ -9,6 +9,10 @@ module Position =
     /// Convert a position to a human readable string.
     let toString pos = sprintf "Line %i, col %i" (pos.Line + 1) (pos.Col + 1)
 
+    /// Convert a position to a string that points to the specified filename at the specified positionstring that points
+    /// to the specified filename at the specified position.
+    let toFileString filename pos = sprintf "%s:%i:%i" filename pos.Line pos.Col
+
     /// Initial position
     let zero = { Line = 0 ; Col = 0 }
 
@@ -20,7 +24,7 @@ module Range =
     /// Converts a range to a string that points to a the starting position of the range in its file.
     let toString range = sprintf "%s:%i:%i" range.File range.StartLine range.StartCol
 
-    /// Creates a range from a file and a start- and end position.
+    /// Creates a range from a file and a start and end position.
     let fromPositions file startPos endPos = {
         File = file
         StartLine = startPos.Line ; StartCol = startPos.Col
@@ -44,6 +48,24 @@ type TokenData =
     | SeparatorToken
     | EndOfLineToken
     | EndOfInputToken
+
+module TokenData =
+    /// Returns a string that can be used for displaying a token in error messages.
+    let toString = function
+        | IndentationToken i -> sprintf "%i indent" i
+        | KeywordToken kw -> sprintf "keyword '%s'" kw
+        | IdentifierToken i -> sprintf "identifier '%s'" i
+        | SymbolToken s -> sprintf "symbol '%s'" s
+        | StringLiteralToken _ -> "string literal"
+        | NumberToken n -> sprintf "number %i" n
+        | SeparatorToken -> "separator"
+        | EndOfLineToken -> "end of line"
+        | EndOfInputToken -> "end of input"
+
+    /// Returns the value of an identifier in a token, if it is an identifier token, None otherwise.
+    let getIdentifier = function
+        | IdentifierToken i -> Some i
+        | _ -> None
 
 /// A token produced by the lexer, adds information about the token's location and whether it was preceded by
 /// whitespace.
@@ -111,15 +133,15 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
         tokens <- tkn :: tokens
 
     // Can be used to check a predicate, and if it fails, exit with the specified error message,
-    // including some location data.
+    // including some location data.TokenDataType.
     let checkLexerPredicate pred msg =
-        let msg = sprintf "Lexer error at %s:%i:%i: %s" filename pos.Line pos.Col msg
+        let msg = sprintf "Lexer error at %s: %s" (Position.toFileString filename pos) msg
         Console.testCondition pred msg
 
     // Can be used to execute an action that may result in an exception. If an exception is thrown, the exception
     // message, including some location data is printed and exit.
     let tryWithErrorReporting msg action =
-        let msg = sprintf "Lexer error at %s:%i:%i: %s" filename pos.Line pos.Col msg
+        let msg = sprintf "Lexer error at %s: %s" (Position.toFileString filename pos) msg
         Console.handleError msg action
 
     // Lexes an indentation token, consisting of spaces at the start of a line.
@@ -172,7 +194,7 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
         let oldIndex = index
         while not atEndOfInput && Char.IsLetterOrDigit <| curChar () do nextChar ()
         let name = input.[oldIndex .. index - 1]
-        if Set.contains (name.ToLowerInvariant ()) keywords then addToken oldPos <| KeywordToken name
+        if Set.contains name keywords then addToken oldPos <| KeywordToken name
         else addToken oldPos <| IdentifierToken name
 
     // Lexes a string literal.

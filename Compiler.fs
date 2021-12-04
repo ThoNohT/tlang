@@ -9,6 +9,8 @@ open tlang.Project
 open tlang.Checker
 open tlang.Lexer
 
+let keywords = Set.ofList [ "Executable" ; "print" ; "let" ; "call" ; "sub" ]
+
 module Syscall =
     let idReg = "rax"
     let argRegs = Map.ofSeq [ 0, "rdi" ; 1, "rsi" ; 2, "rdx" ; 3, "r10" ; 4, "r8" ; 5, "r9" ]
@@ -34,12 +36,12 @@ let writeDecl wl (kvp: KeyValuePair<string, int>) =
 
 let writeStatement wl =
     function
-    | PrintStr (IndexedStringLiteral (strId, strVal)) ->
+    | PrintStr (StringLiteral (strId, strVal)) ->
         wl <| sprintf "    ; PrintStr %s" (asmEncodeString strVal)
         wl <| sprintf "    mov rsi, txt_%i" strId
         wl <| sprintf "    mov rdx, %i" (String.length strVal)
         wl "    call _PrintStr"
-    | PrintVar (OffsetVariable (offset, name)) ->
+    | PrintVar (Variable (offset, name)) ->
         wl <| sprintf "    ; PrintVar %s" name
         wl <| "    mov rax, mem"
         wl <| sprintf "    add rax, %d" (offset * 8)
@@ -47,7 +49,7 @@ let writeStatement wl =
         wl "    call _printInt64"
     | Call (SubroutineName name) ->
         wl <| sprintf "    call __%s" name
-    | Assignment ((OffsetVariable (offset, name)), intVal) ->
+    | Assignment ((Variable (offset, name)), intVal) ->
         wl <| sprintf "    ; Assignment %s, %i" name intVal
         wl "    mov rax, mem"
         wl <| sprintf "    mov rbx, %d" intVal
@@ -113,7 +115,7 @@ let writeSubroutine wl =
     | _ -> ()
 
 /// Writes the project to x86_64 linux assembly for Nasm.
-let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
+let write_x86_64_LinuxNasm fileName (project: Project) =
     let writer = new StreamWriter (fileName, false)
 
     let wl (str: string) = writer.WriteLine str
@@ -127,7 +129,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     wl ""
 
     // Program statements.
-    for stmt in CheckedProgram.statements project.Program do
+    for stmt in Program.statements project.Program do
         writeStatement wl stmt
         wl ""
 
@@ -148,7 +150,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
     wl "    ; Subroutines."
     wl ""
 
-    for sr in CheckedProgram.subroutines project.Program do
+    for sr in Program.subroutines project.Program do
         writeSubroutine wl sr
         wl ""
 
@@ -168,7 +170,7 @@ let write_x86_64_LinuxNasm fileName (project: CheckedProject) =
 
 /// Parses an input file to a Project.
 let parseProject inputFile =
-    let parseResult = File.ReadAllText inputFile |> ParseState.prepareString |> projectParser.Run
+    let parseResult = File.ReadAllText inputFile |> State.prepareString |> Parser.Run
 
     match parseResult with
     | Failure (l, m, s) ->

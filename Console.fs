@@ -51,6 +51,7 @@ let testConditionWithUsageError compilerName condition error =
 let testCondition condition error =
     if not condition then
         printErr error
+        Environment.Exit 1
     else
         ()
 
