@@ -11,7 +11,7 @@ module Position =
 
     /// Convert a position to a string that points to the specified filename at the specified positionstring that points
     /// to the specified filename at the specified position.
-    let toFileString filename pos = sprintf "%s:%i:%i" filename pos.Line pos.Col
+    let toFileString filename pos = sprintf "%s:%i:%i" filename (pos.Line + 1) (pos.Col + 1)
 
     /// Initial position
     let zero = { Line = 0 ; Col = 0 }
@@ -22,7 +22,13 @@ type Range = { File: string ; StartLine: int ; StartCol: int ; EndLine: int ; En
 
 module Range =
     /// Converts a range to a string that points to a the starting position of the range in its file.
-    let toString range = sprintf "%s:%i:%i" range.File range.StartLine range.StartCol
+    let toString range = sprintf "%s:%i:%i" range.File (range.StartLine + 1) (range.StartCol + 1)
+
+    /// Converts a range to a srting that points to the starting and ending position of the range in its file.
+    let toFullString range =
+        sprintf "%s:%i:%i -> %i:%i" range.File
+            (range.StartLine + 1) (range.StartCol + 1)
+            (range.EndLine + 1) (range.EndCol + 1)
 
     /// Creates a range from a file and a start and end position.
     let fromPositions file startPos endPos = {
@@ -94,6 +100,11 @@ type Token = {
     WhitespaceBefore: bool
 }
 
+module Token =
+    /// Converts a token to a string that can be used for debugging purposes.
+    let toString t =
+        sprintf "[ %s ; whitespaceBefore: %b ; %A ]" (Range.toFullString t.Range) t.WhitespaceBefore t.Data
+
 /// Lexes a full file into a list of tokens.
 /// keywords: These words are identified as keywords, other words are considered identifiers.
 /// filename: The name of the file to be lexed.
@@ -147,13 +158,13 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
     // Can be used to check a predicate, and if it fails, exit with the specified error message,
     // including some location data.TokenDataType.
     let checkLexerPredicate pred msg =
-        let msg = sprintf "Lexer error at %s: %s" (Position.toFileString filename pos) msg
+        let msg = sprintf "%s: Lexer error: %s" (Position.toFileString filename pos) msg
         Console.testCondition pred msg
 
     // Can be used to execute an action that may result in an exception. If an exception is thrown, the exception
     // message, including some location data is printed and exit.
     let tryWithErrorReporting msg action =
-        let msg = sprintf "Lexer error at %s: %s" (Position.toFileString filename pos) msg
+        let msg = sprintf "%s: Lexer error: %s" (Position.toFileString filename pos) msg
         Console.handleError msg action
 
     // Lexes an indentation token, consisting of spaces at the start of a line.
@@ -167,8 +178,8 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
             // first time leading whitespace occurs is taken as the number of spaces per indent.
             let oldIndex = index
             while not atEndOfInput && isWhitespace <| curChar () do
-                nextChar ()
                 checkLexerPredicate (curChar () = ' ') "Leading whitespace may only consist of spaces."
+                nextChar ()
 
             spacesPerIndent <- Some <| index - oldIndex
             addToken oldPos <| IndentationToken 1
@@ -177,8 +188,8 @@ let lexFile (keywords: Set<string>) (filename: string) (input: string): List<Tok
             // as the indent level.
             let oldIndex = index
             while not atEndOfInput && isWhitespace <| curChar () do
-                nextChar ()
                 checkLexerPredicate (curChar () = ' ') "Leading whitespace may only consist of spaces."
+                nextChar ()
 
             let nSpaces = index - oldIndex
             let extraSpace = nSpaces % spi

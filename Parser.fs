@@ -13,10 +13,15 @@ open tlang.Project
 let parseProject (input: List<Token>) : UncheckedProject =
     let mutable index = 0
 
+    // Prints a debug message for the current state, showing the index and the current token.
+    let dbg msg = printfn "[%i] %A: %s" index input.[index - 1].Data msg
+
     // Returns the next token in the input and advances the index.
     let nextToken () =
         let c = input.[index]
-        index <- index + 1
+        // Sometimes tokens want to look ahead more than one token, without checking the tokens directly,
+        // to facilitate, keep returning the last token (end of input) once we are at the end.
+        if index < List.length input - 1 then index <- index + 1
         c
 
     // Resets the parser state to the specified value for the index.
@@ -27,7 +32,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
     let peekToken () = input.[index]
 
     // Consumes the next token, and returns the result of th check on the token.
-    let tryCheckNext (f: Token ->  bool) =
+    let tryCheckNext (f: Token -> bool) =
         let t = nextToken ()
         f t
 
@@ -60,13 +65,26 @@ let parseProject (input: List<Token>) : UncheckedProject =
             failwith "unreachable"
 
     // Consumes an end of line token.
-    let consumeEndOfLine label = checkNext (fun t -> t.Data = EndOfLineToken) label
+    let consumeEndOfLine label = checkNext (fun t -> t.Data = EndOfLineToken) (sprintf "%s ws" label)
 
     // Consumes one or more end of line tokens. All but the first end of line token may be prefixed by indentation
     // tokens of any level
     let consumeEndOfLines label =
-        consumeEndOfLine label
-        while (peekToken ()).Data = EndOfLineToken do consumeEndOfLine label
+        let tryConsumeEmptyLine () =
+            let oldIndex = index
+            // Consume any indentation first.
+            match (peekToken ()).Data with
+            | IndentationToken _ -> ignore <| nextToken ()
+            | _ -> ()
+
+            // Then check if there is an end of line token.
+            if not <| tryCheckNext (fun t -> t.Data = EndOfLineToken) then
+                resetState oldIndex
+                false
+            else true
+
+        consumeEndOfLine label // There has to be one end of line.
+        while tryConsumeEmptyLine () do () // Then any number of empty lines.
 
     // Parses a project type.
     let parseProjectType () =
@@ -151,10 +169,14 @@ let parseProject (input: List<Token>) : UncheckedProject =
         let indentIsCorrect = checkIndent indent
         if not indentIsCorrect then None
         else
-            tryParsePrint ()
-            |> Option.orElseWith tryParseCall
-            |> Option.orElseWith tryParseAssignment
-
+            let res = tryParsePrint ()
+                      |> Option.orElseWith tryParseCall
+                      |> Option.orElseWith tryParseAssignment
+            match res with
+            | Some r ->
+                consumeEndOfLines "statement"
+                Some r
+            | None -> None
 
     // Tries to parse a subroutine. This parser will commit to parsing a statement after having parsed the subroutine
     // name followed by a ":".
@@ -172,7 +194,6 @@ let parseProject (input: List<Token>) : UncheckedProject =
                 | Some stmt ->
                     stmts <- stmt :: stmts
                     stmtOpt <- tryParseStatement 1
-                    consumeEndOfLines "subroutine"
                 | _ -> ()
             Some <| USubroutine (SubroutineName n, List.rev stmts)
 
@@ -194,9 +215,10 @@ let parseProject (input: List<Token>) : UncheckedProject =
             match stmtOpt with
             | Some stmt ->
                 stmts <- stmt :: stmts
-                consumeEndOfLines "program"
+                // parseStatement already consumes end of lines.
                 stmtOpt <- tryParseTopLevelStatement ()
-            | None -> ()
+            | None ->
+                ()
 
         UProgram <| List.rev stmts
 
