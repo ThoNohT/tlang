@@ -110,8 +110,8 @@ let parseProject (input: List<Token>) : UncheckedProject =
             let varName = TokenData.tryGetIdentifier t.Data
 
             match strLit, varName with
-            | Some sl , _ -> Some <| UncheckedStatement.PrintStr (UncheckedStringLiteral.StringLiteral sl)
-            | _, Some vn -> Some <| UncheckedStatement.PrintVar (UncheckedVariable.Variable vn)
+            | Some sl , _ -> Some <| UPrintStr (UStringLiteral sl)
+            | _, Some vn -> Some <| UPrintVar (UVariable vn)
             | _ ->
                 let msg =
                     sprintf "Error parsing a print statement, expected a %s or %s, but got %s."
@@ -129,7 +129,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
             None
         else
             let subName = consumeNext (fun t -> TokenData.tryGetIdentifier t.Data) "call subroutine name"
-            Some <| UncheckedStatement.Call (SubroutineName subName)
+            Some <| UCall (SubroutineName subName)
 
     // Tries to parse an assignment, will return None if the first keyword is not matched and fail if anything later
     // fails.
@@ -142,7 +142,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
             let name = consumeNext (fun t -> TokenData.tryGetIdentifier t.Data) "assignment variable"
             checkNext (fun t -> t.Data = SymbolToken "=") "assignment"
             let value = consumeNext (fun t -> TokenData.tryGetNumber t.Data) "assignment value"
-            Some <| UncheckedStatement.Assignment (UncheckedVariable.Variable name, value)
+            Some <| UAssignment (UVariable name, value)
 
     // Tries to parse a statement. This parser first checks whether the next token has the correct indentation, then
     // applies one of the parsers for the specific statements. Consumes no tokens if the indentation is incorrect, or
@@ -174,7 +174,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
                     stmtOpt <- tryParseStatement 1
                     consumeEndOfLines "subroutine"
                 | _ -> ()
-            Some <| Subroutine (SubroutineName n, List.rev stmts)
+            Some <| USubroutine (SubroutineName n, List.rev stmts)
 
         | _ ->
             resetState oldIndex
@@ -183,7 +183,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
     // Parses a top-level statement, which is either a subroutine, or a regular statement.
     let tryParseTopLevelStatement () =
         Option.orElseWith
-            (fun _ -> Option.map UncheckedTopLevelStatement.Stmt <| tryParseStatement 0)
+            (fun _ -> Option.map UStmt <| tryParseStatement 0)
             (tryParseSubroutine ())
 
     // Parses a program.
@@ -198,7 +198,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
                 stmtOpt <- tryParseTopLevelStatement ()
             | None -> ()
 
-        UncheckedProgram.Program <| List.rev stmts
+        UProgram <| List.rev stmts
 
     let pType = parseProjectType ()
     parseSeparator ()

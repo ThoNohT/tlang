@@ -44,63 +44,63 @@ let getVariableOffset (variables: VariableOffsets) name =
         (idx, Map.add name idx variables)
 
 type CheckResult =
-    | Checked of CheckedProject * List<CheckIssue>
+    | Checked of Project * List<CheckIssue>
     | Failed of List<CheckIssue>
 
-let private checkProgram (Program stmts) : CheckedProgram =
-    let checkStmt strings variables : Statement -> CheckedStatement * StringIndexes * VariableOffsets =
+let private checkProgram (UProgram stmts) : Program =
+    let checkStmt strings variables : UncheckedStatement -> Statement * StringIndexes * VariableOffsets =
         function
-        | Statement.PrintStr (StringLiteral str) ->
+        | UPrintStr (UStringLiteral str) ->
             let (idx, strings') = getStringIdx strings str
-            CheckedStatement.PrintStr (IndexedStringLiteral (idx, str)), strings', variables
-        | Statement.PrintVar (Variable n) ->
+            Statement.PrintStr (StringLiteral.StringLiteral (idx, str)), strings', variables
+        | UPrintVar (UVariable n) ->
             let (offset, variables') = getVariableOffset variables n
-            CheckedStatement.PrintVar (OffsetVariable (offset, n)), strings, variables'
-        | Statement.Call n -> Call n, strings, variables
-        | Statement.Assignment ((Variable n), value) ->
+            Statement.PrintVar (Variable.Variable (offset, n)), strings, variables'
+        | UCall n -> Statement.Call n, strings, variables
+        | UAssignment (UVariable n, value) ->
             let (offset, variables') = getVariableOffset variables n
-            CheckedStatement.Assignment (OffsetVariable (offset, n), value), strings, variables'
+            Statement.Assignment (Variable.Variable (offset, n), value), strings, variables'
 
     let checkTopStmt strings variables =
         function
-        | TopLevelStatement.Subroutine (n, stmts) ->
+        | USubroutine (n, stmts) ->
             let folder (stmts, strings, variables) stmt =
                 let stmt', strings', variables' = checkStmt strings variables stmt
                 (stmt' :: stmts, strings', variables')
 
             let stmts', strings', variables' = List.fold folder ([], strings, variables) stmts
-            (CheckedTopLevelStatement.Subroutine (n, List.rev stmts'), strings', variables')
-        | TopLevelStatement.Stmt stmt ->
+            (TopLevelStatement.Subroutine (n, List.rev stmts'), strings', variables')
+        | UStmt stmt ->
             let stmt', strings', variables' = checkStmt strings variables stmt
-            Stmt stmt', strings', variables'
+            TopLevelStatement.Stmt stmt', strings', variables'
 
     let folder (stmts, strings, variables) stmt =
         let stmt', strings', variables' = checkTopStmt strings variables stmt
         stmt' :: stmts, strings', variables'
 
     let (stmts', strings, variables) = List.fold folder ([], Map.empty, Map.empty) stmts
-    { CheckedProgram.Stmts = List.rev stmts' ; Strings = strings ; Variables = variables }
+    { Program.Stmts = List.rev stmts' ; Strings = strings ; Variables = variables }
 
 /// Determine the names of all unused subroutines. Starts by marking all subroutines as unused, then collects the
 /// subroutines that are directly called, and marks them as used. Every subroutine that is used yields more statements
 /// that can be checked that indirectly use other subroutines. Stop when there are no more statements to check.
 let unusedSubs program =
-    let subroutines = Program.subroutines program
-    let mutable unusedSoFar = subroutines |> List.choose TopLevelStatement.name |> Set.ofList
+    let subroutines = UncheckedProgram.subroutines program
+    let mutable unusedSoFar = subroutines |> List.choose UncheckedTopLevelStatement.name |> Set.ofList
 
-    let mutable stmtsToCheck = Program.statements program
+    let mutable stmtsToCheck = UncheckedProgram.statements program
     let mutable cnt = true
     while cnt do
         cnt <-
             match stmtsToCheck with
             | [] -> false
             | x :: xs ->
-                match Statement.call x with
-                | Some (Statement.Call n) when Set.contains n unusedSoFar ->
+                match UncheckedStatement.call x with
+                | Some (UCall n) when Set.contains n unusedSoFar ->
                     unusedSoFar <- Set.remove n unusedSoFar
                     let newStmts =
-                        match List.find (fun s -> TopLevelStatement.name s = Some n) subroutines with
-                        | (TopLevelStatement.Subroutine (_, subStmts)) -> subStmts
+                        match List.find (fun s -> UncheckedTopLevelStatement.name s = Some n) subroutines with
+                        | (USubroutine (_, subStmts)) -> subStmts
                         | _ -> []
 
                     stmtsToCheck <- xs @ newStmts
@@ -113,11 +113,11 @@ let unusedSubs program =
     unusedSoFar
 
 /// Checks a project for issues.
-let check (project: Project) : CheckResult =
+let check (project: UncheckedProject) : CheckResult =
     let prog = project.Program
 
-    let callNames = Program.calls prog |> List.choose Statement.name |> Set.ofList
-    let subNames = Program.subroutines prog |> List.choose TopLevelStatement.name |> Set.ofList
+    let callNames = UncheckedProgram.calls prog |> List.choose UncheckedStatement.name |> Set.ofList
+    let subNames = UncheckedProgram.subroutines prog |> List.choose UncheckedTopLevelStatement.name |> Set.ofList
     let undefinedCalls = Set.difference callNames subNames
 
     let callErrors =
@@ -132,6 +132,6 @@ let check (project: Project) : CheckResult =
 
     if List.isEmpty callErrors then
         let checkedProgram = checkProgram project.Program
-        Checked ({ Program = checkedProgram ; CheckedProject.Type = project.Type } , subWarnings)
+        Checked ({ Program = checkedProgram ; Project.Type = project.Type } , subWarnings)
     else
         Failed <| subWarnings @ callErrors

@@ -4,10 +4,11 @@ open System
 open System.IO
 open System.Collections.Generic
 open tlang.Console
-open tlang.Parser
 open tlang.Project
-open tlang.Checker
-open tlang.Lexer
+
+module C = tlang.Checker
+module L = tlang.Lexer
+module P = tlang.Parser
 
 let keywords = Set.ofList [ "Executable" ; "print" ; "let" ; "call" ; "sub" ]
 
@@ -168,42 +169,25 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
 
     writer.Close ()
 
-/// Parses an input file to a Project.
-let parseProject inputFile =
-    let parseResult = File.ReadAllText inputFile |> State.prepareString |> Parser.Run
-
-    match parseResult with
-    | Failure (l, m, s) ->
-        printErr <| ParseResult.showError l m s
-        Environment.Exit 1
-        failwith "unreachable"
-
-    | Success (prog, _) -> prog
-
 /// Compiles the project from the specified file.
 /// Returns the name of the generated executable.
 let compile inputFile =
     let inputStr = File.ReadAllText inputFile
-    let tkns = lexFile keywords inputFile inputStr
-
-    printfn "%A" tkns
-
-    Environment.Exit 0
-
-    let project = parseProject inputFile
+    let tkns = L.lexFile keywords inputFile inputStr
+    let project = P.parseProject tkns
     let (Executable projectName) = project.Type
 
     /// Check for issues.
-    match check project with
-    | Failed issues ->
+    match C.check project with
+    | C.Failed issues ->
         printfn "Issues found:\n"
-        for issue in issues do eprintfn "%s" (CheckIssue.toString issue)
+        for issue in issues do eprintfn "%s" (C.CheckIssue.toString issue)
         Environment.Exit 1
         failwith "Unreachable"
 
-    | Checked (project', warnings) ->
+    | C.Checked (project', warnings) ->
         if not <| List.isEmpty warnings then printfn "Issues found:\n"
-        for warning in warnings do eprintfn "%s" (CheckIssue.toString warning)
+        for warning in warnings do eprintfn "%s" (C.CheckIssue.toString warning)
 
         /// Determine file names.
         let asmFile = sprintf "%s.asm" projectName
@@ -224,7 +208,9 @@ let compile inputFile =
 
 /// Cleans up files for the project from the specified file.
 let cleanup inputFile includeExe =
-    let project = parseProject inputFile
+    let inputStr = File.ReadAllText inputFile
+    let tkns = L.lexFile keywords inputFile inputStr
+    let project = P.parseProject tkns
     let (Executable projectName) = project.Type
 
     printfn "Cleaning up files for %s" projectName
