@@ -149,6 +149,18 @@ let parseProject (input: List<Token>) : UncheckedProject =
             let subName = consumeNext (fun t -> TokenData.tryGetIdentifier t.Data) "call subroutine name"
             Some <| UCall (SubroutineName subName)
 
+    // Parses a (positive or negative) number.
+    let parseNumber () =
+        let first = peekToken ()
+        let isNegative =
+            match first.Data with
+            | SymbolToken "-" ->
+                nextToken () |> ignore
+                true
+            | _ -> false
+        let value = consumeNext (fun t -> TokenData.tryGetNumber t.Data) "number value"
+        if isNegative then -1L * value else value
+
     // Tries to parse an assignment, will return None if the first keyword is not matched and fail if anything later
     // fails.
     let tryParseAssignment () =
@@ -159,7 +171,7 @@ let parseProject (input: List<Token>) : UncheckedProject =
         else
             let name = consumeNext (fun t -> TokenData.tryGetIdentifier t.Data) "assignment variable"
             checkNext (fun t -> t.Data = SymbolToken "=") "assignment"
-            let value = consumeNext (fun t -> TokenData.tryGetNumber t.Data) "assignment value"
+            let value = parseNumber ()
             Some <| UAssignment (UVariable name, value)
 
     // Tries to parse a statement. This parser first checks whether the next token has the correct indentation, then
