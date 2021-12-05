@@ -91,13 +91,13 @@ let parseProject (input: List<Token>) : UncheckedProject =
         checkNext (fun t -> t.Data = KeywordToken "Executable") "project type"
         checkNext (fun t -> t.Data = SymbolToken ":") "project type"
         let name = consumeNext (fun t -> TokenData.tryGetIdentifier t.Data) "project name"
-        consumeEndOfLine "project type"
+        consumeEndOfLines "project type"
         Executable name
 
     // Parses a separator between the project type definition and the program.
     let parseSeparator () =
         checkNext (fun t -> t.Data = SeparatorToken) "separator"
-        consumeEndOfLine "separator"
+        consumeEndOfLines "separator"
 
     // Checks that the next token is indented to the specified indent level.
     // For an indent level of 0, it is checked that the next token is not an indent token, and no tokens are consumed.
