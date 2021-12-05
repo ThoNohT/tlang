@@ -71,12 +71,16 @@ let handleError failureMsg action =
 /// A flag that can be provided with the build command.
 type BuildFlag =
     | Run
-    | DumpTokens
+    | DumpLexerTokens
+    | DumpUncheckedSyntaxTree
+    | DumpCheckedSyntaxTree
 
 module BuildFlag =
     let fromString = function
         | "-r" -> Some Run
-        | "-dt" -> Some DumpTokens
+        | "-dlt" -> Some DumpLexerTokens
+        | "-dsu" -> Some DumpUncheckedSyntaxTree
+        | "-dsc" -> Some DumpCheckedSyntaxTree
         | _ -> None
 
     let accumulate args = args |> List.choose fromString |> Set.ofList

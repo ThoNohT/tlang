@@ -175,11 +175,16 @@ let compile flags inputFile =
     let inputStr = File.ReadAllText inputFile
     let tkns = L.lexFile keywords inputFile inputStr
 
-    if Set.contains DumpTokens flags then
+    if Set.contains DumpLexerTokens flags then
         printfn "%s" <| String.concat "\n" (List.mapi (fun i t -> sprintf "%i: %s" i (L.Token.toString t)) tkns)
         Environment.Exit 0
 
     let project = P.parseProject tkns
+
+    if Set.contains DumpUncheckedSyntaxTree flags then
+        printfn "%A" project
+        Environment.Exit 0
+
     let (Executable projectName) = project.Type
 
     /// Check for issues.
@@ -193,6 +198,10 @@ let compile flags inputFile =
     | C.Checked (project', warnings) ->
         if not <| List.isEmpty warnings then printfn "Issues found:\n"
         for warning in warnings do eprintfn "%s" (C.CheckIssue.toString warning)
+
+        if Set.contains DumpCheckedSyntaxTree flags then
+            printfn "%A" project'
+            Environment.Exit 0
 
         /// Determine file names.
         let asmFile = sprintf "%s.asm" projectName
