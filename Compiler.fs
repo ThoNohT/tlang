@@ -212,7 +212,7 @@ let compile flags inputFile =
         exeFile
 
 /// Cleans up files for the project from the specified file.
-let cleanup inputFile includeExe =
+let cleanup flags inputFile =
     let inputStr = File.ReadAllText inputFile
     let tkns = L.lexFile keywords inputFile inputStr
     let project = P.parseProject tkns
@@ -234,6 +234,6 @@ let cleanup inputFile includeExe =
 
     let exeFile = sprintf "%s" projectName
 
-    if includeExe && File.Exists exeFile then
+    if Set.contains IncludeExe flags && File.Exists exeFile then
         printfn "Removing %s" exeFile
         File.Delete exeFile

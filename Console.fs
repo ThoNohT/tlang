@@ -81,3 +81,14 @@ module BuildFlag =
 
     let accumulate args = args |> List.choose fromString |> Set.ofList
 
+
+/// A falg that cna be provided with the clean command.
+type CleanFlag =
+    | IncludeExe
+
+module CleanFlag =
+    let fromString = function
+        | "-e" -> Some IncludeExe
+        | _ -> None
+
+    let accumulate args = args |> List.choose fromString |> Set.ofList

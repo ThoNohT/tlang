@@ -33,9 +33,10 @@ let main argv =
         testConditionWithUsageError compilerName (List.length args >= 2) "Missing clean target."
         let target = args.[1]
         let remaining = args.[2..]
-        let includeExe = List.contains "-e" remaining
 
-        handleError "Error while cleaning up." (fun _ -> cleanup target includeExe)
+        let cleanFlags = CleanFlag.accumulate remaining
+
+        handleError "Error while cleaning up." (fun _ -> cleanup cleanFlags target)
 
     | "test" ->
         let success = Test.Run.runTests ()
