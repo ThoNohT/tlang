@@ -171,9 +171,14 @@ let write_x86_64_LinuxNasm fileName (project: Project) =
 
 /// Compiles the project from the specified file.
 /// Returns the name of the generated executable.
-let compile inputFile =
+let compile flags inputFile =
     let inputStr = File.ReadAllText inputFile
     let tkns = L.lexFile keywords inputFile inputStr
+
+    if Set.contains DumpTokens flags then
+        printfn "%s" <| String.concat "\n" (List.mapi (fun i t -> sprintf "%i: %s" i (L.Token.toString t)) tkns)
+        Environment.Exit 0
+
     let project = P.parseProject tkns
     let (Executable projectName) = project.Type
 

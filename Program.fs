@@ -20,9 +20,11 @@ let main argv =
         let target = args.[1]
         let remaining = args.[2..]
 
-        let exeFile = handleError "Error while compiling." (fun _ -> compile target)
+        let buildFlags = BuildFlag.accumulate remaining
 
-        if List.contains "-r" remaining then
+        let exeFile = handleError "Error while compiling." (fun _ -> compile buildFlags target)
+
+        if Set.contains Run buildFlags then
             let wd = Directory.GetCurrentDirectory()
             printfn "%s" <| Path.Combine (wd, exeFile)
             handleError "Failed to run compiled program." (fun _ -> ignore <| Process.Start (Path.Combine (wd, exeFile)))

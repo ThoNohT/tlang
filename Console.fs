@@ -66,3 +66,18 @@ let handleError failureMsg action =
         printErr e.Message
         Environment.Exit 1
         failwith "unreachable"
+
+
+/// A flag that can be provided with the build command.
+type BuildFlag =
+    | Run
+    | DumpTokens
+
+module BuildFlag =
+    let fromString = function
+        | "-r" -> Some Run
+        | "-dt" -> Some DumpTokens
+        | _ -> None
+
+    let accumulate args = args |> List.choose fromString |> Set.ofList
+
