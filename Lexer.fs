@@ -51,20 +51,32 @@ type TokenData =
 
 module TokenData =
     /// Returns a string that can be used for displaying a token in error messages.
-    let toString = function
-        | IndentationToken i -> sprintf "%i indent" i
-        | KeywordToken kw -> sprintf "keyword '%s'" kw
-        | IdentifierToken i -> sprintf "identifier '%s'" i
-        | SymbolToken s -> sprintf "symbol '%s'" s
+    /// withValue determines whether the value of the token is also included.
+    /// Note that for string literals, the value is never included.
+    let toString withValue = function
+        | IndentationToken i -> if withValue then sprintf "%i indent" i else "indent"
+        | KeywordToken kw -> if withValue then sprintf "keyword '%s'" kw else "keyword"
+        | IdentifierToken i -> if withValue then sprintf "identifier '%s'" i else "identifier"
+        | SymbolToken s -> if withValue then sprintf "symbol '%s'" s else "symbol"
         | StringLiteralToken _ -> "string literal"
-        | NumberToken n -> sprintf "number %i" n
+        | NumberToken n -> if withValue then sprintf "number %i" n else "number"
         | SeparatorToken -> "separator"
         | EndOfLineToken -> "end of line"
         | EndOfInputToken -> "end of input"
 
     /// Returns the value of an identifier in a token, if it is an identifier token, None otherwise.
-    let getIdentifier = function
+    let tryGetIdentifier = function
         | IdentifierToken i -> Some i
+        | _ -> None
+
+    /// Returns the value of a string literal in a token, if it is a string literal token, None otherwise.
+    let tryGetStringLiteral = function
+        | StringLiteralToken sl -> Some sl
+        | _ -> None
+
+    /// Returns the value of an number in a token, if it is a number token, None otherwise.
+    let tryGetNumber = function
+        | NumberToken n -> Some n
         | _ -> None
 
 /// A token produced by the lexer, adds information about the token's location and whether it was preceded by
