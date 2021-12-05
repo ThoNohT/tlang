@@ -3,6 +3,55 @@ module tlang.Console
 open System
 open System.Diagnostics
 
+/// A flag that can be provided with the build command.
+type BuildFlag =
+    | Run
+    | DumpLexerTokens
+    | DumpUncheckedSyntaxTree
+    | DumpCheckedSyntaxTree
+
+module BuildFlag =
+    let allFlags =
+        Map.ofList
+            [ "-r", Run
+              "-dlt", DumpLexerTokens
+              "-dsu", DumpUncheckedSyntaxTree
+              "-dsc", DumpCheckedSyntaxTree
+            ]
+
+    let fromString str = Map.tryFind str allFlags
+
+    let explain = function
+        | Run -> "Run the program after compiling it."
+        | DumpLexerTokens -> "Dump the tokens produced by the lexer and exit."
+        | DumpUncheckedSyntaxTree -> "Dump the unchecked syntax tree prooduced by the parser and exit."
+        | DumpCheckedSyntaxTree -> "Dump the checked syntax tree prooduced by the checker and exit."
+
+    let accumulate args = args |> List.choose fromString |> Set.ofList
+
+/// A flag that cna be provided with the clean command.
+type CleanFlag =
+    | IncludeExe
+
+module CleanFlag =
+    let allFlags = Map.ofList [ "-e", IncludeExe ]
+
+    let fromString str = Map.tryFind str allFlags
+
+    let explain = function
+        | IncludeExe -> "Also cleanup the compiled executable."
+
+    let accumulate args = args |> List.choose fromString |> Set.ofList
+
+let printFlags flags explain =
+    flags
+    |> Map.toList
+    |> List.map (fun (s, f) -> sprintf "        %s %s" ((sprintf "%s:"s).PadRight 14) (explain f))
+    |> String.concat "\n"
+    |> printfn "%s"
+
+
+
 /// Prints an error to stdout in red.
 let printErr (str: string) =
     Console.ForegroundColor <- ConsoleColor.Red
@@ -29,12 +78,12 @@ let runCmdEchoed (args: List<string>) =
 let printUsage compilerName =
     printfn "Usage: %s <COMMAND> [OPTIONS]" compilerName
     printfn "  COMMAND:"
-    printfn "    build <name>     Build the program with the specified name."
+    printfn "    build <name>     Build the project with the specified name."
     printfn "      OPTIONS:"
-    printfn "        -r:            Run the program after compiling it."
-    printfn "    clean <name>     Clean the output for the program with the specified name."
+    printFlags BuildFlag.allFlags BuildFlag.explain
+    printfn "    clean <name>     Clean the output for the project with the specified name."
     printfn "      OPTIONS:"
-    printfn "        -e:            Also cleanup the compiled executable."
+    printFlags CleanFlag.allFlags CleanFlag.explain
     printfn "    test             Run internal unit tests."
     Environment.Exit 1
 
@@ -68,31 +117,4 @@ let handleError failureMsg action =
         failwith "unreachable"
 
 
-/// A flag that can be provided with the build command.
-type BuildFlag =
-    | Run
-    | DumpLexerTokens
-    | DumpUncheckedSyntaxTree
-    | DumpCheckedSyntaxTree
 
-module BuildFlag =
-    let fromString = function
-        | "-r" -> Some Run
-        | "-dlt" -> Some DumpLexerTokens
-        | "-dsu" -> Some DumpUncheckedSyntaxTree
-        | "-dsc" -> Some DumpCheckedSyntaxTree
-        | _ -> None
-
-    let accumulate args = args |> List.choose fromString |> Set.ofList
-
-
-/// A falg that cna be provided with the clean command.
-type CleanFlag =
-    | IncludeExe
-
-module CleanFlag =
-    let fromString = function
-        | "-e" -> Some IncludeExe
-        | _ -> None
-
-    let accumulate args = args |> List.choose fromString |> Set.ofList
