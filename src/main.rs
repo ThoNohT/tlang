@@ -155,9 +155,7 @@ fn main() {
             cleanup(target, include_exe).handle_with_exit(Some("Error while cleaning up."));
         }
         _ => {
-            println!("Unknown command: '{}'.", cmd);
-            console::print_usage(&args[0]);
-            exit(1);
+            console::test_condition_with_usage_error(&args[0], false, format!("Unknown command: '{}'.", cmd).as_str());
         }
     }
 }

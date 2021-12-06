@@ -1,8 +1,98 @@
-use colour::e_red;
-use std::fmt;
-use std::process::exit;
-use std::process::Command;
-use std::str;
+mod flag {
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+    use std::hash::Hash;
+
+    /// A flag that can be used to define custom behavior for a command.
+    pub trait Flag {
+        /// Returns a map for all flags, indexed by the string that triggers the flag.
+        fn all_flags() -> HashMap<&'static str, Self> where Self : Sized;
+
+        /// Returns as tring explaining the specified flag.
+        fn explain(flag: &Self) -> &str;
+
+        /// Converts a string into a flag, if it is specified in all_flags.
+        fn from_string(flag: &str) -> Option<Self>
+            where Self: Flag, Self: Clone
+        {
+            let map = Self::all_flags();
+            return map.get(flag).cloned();
+        }
+
+        /// Converts an iterator of strings into a set containing all valid flags specified in this iterator.
+        fn accumulate<'a, I>(args: I) -> HashSet<Self>
+            where I: Iterator<Item = &'a str>, Self: Flag, Self: Clone, Self: Eq, Self: Hash
+        {
+            return HashSet::from_iter(args.filter_map(Self::from_string));
+        }
+
+        /// Prints all flags of the specified type, including their explanation.
+        fn print_flags()
+            where Self : Sized
+        {
+            for (key, val) in Self::all_flags().iter() {
+                println!("        {:<14} {}", key, Self::explain(val));
+            }
+        }
+    }
+}
+
+mod build_flag {
+    use std::collections::HashMap;
+    use crate::console::flag::Flag;
+
+    #[derive(PartialEq, Eq, Clone, Hash)]
+    pub enum BuildFlag {
+        Run,
+        DumpLexerTokens,
+        DumpUncheckedSyntaxTree,
+        DumpCheckedSyntaxTree
+    }
+
+    impl Flag for BuildFlag {
+        fn all_flags() -> HashMap<&'static str, BuildFlag> {
+            return HashMap::from([
+                ("-r", BuildFlag::Run),
+                ("-dt", BuildFlag::DumpLexerTokens),
+                ("-dtu", BuildFlag::DumpUncheckedSyntaxTree),
+                ("-dtc", BuildFlag::DumpCheckedSyntaxTree),
+            ]);
+        }
+
+        fn explain(flag: &BuildFlag) -> &str {
+            return match flag {
+                BuildFlag::Run => "Run the program after compiling it.",
+                BuildFlag::DumpLexerTokens => "Dump the tokens produced by the lexer and exit.",
+                BuildFlag::DumpUncheckedSyntaxTree => "Dump the unchecked syntax tree produced by the parser and exit.",
+                BuildFlag::DumpCheckedSyntaxTree => "Dump the checked syntax tree produced by the checker and exit.",
+            }
+        }
+    }
+}
+
+mod clean_flag {
+    use std::collections::HashMap;
+    use crate::console::flag::Flag;
+
+    #[derive(PartialEq, Eq, Clone, Hash)]
+    pub enum CleanFlag {
+        IncludeExe,
+    }
+
+    impl Flag for CleanFlag {
+        fn all_flags() -> HashMap<&'static str, CleanFlag> {
+            return HashMap::from([
+                ("-e", CleanFlag::IncludeExe),
+            ]);
+        }
+
+        fn explain(flag: &CleanFlag) -> &str {
+            return match flag {
+                CleanFlag::IncludeExe => "Also cleanup the compiled executable.",
+            }
+        }
+    }
+}
 
 /// The Result type in this application always contains a String as error.
 pub type AppResult<T> = Result<T, String>;
@@ -12,6 +102,13 @@ pub trait ReturnOnError<T, E> {
     /// aditional message are shown and the application exits with exit code 1.
     fn handle_with_exit(self, additional_msg: Option<&str>) -> T;
 }
+
+use colour::e_red;
+use std::fmt;
+use std::process::exit;
+use std::process::Command;
+use std::str;
+use crate::console::flag::Flag;
 
 /// Implementation of ReturnOnError for a Result with a displayable error.
 impl<T, E> ReturnOnError<T, E> for Result<T, E>
@@ -33,16 +130,17 @@ where E: fmt::Display,
     }
 }
 
+
 /// Prints the usage string.
 pub fn print_usage(compiler_name: &str) {
     println!("Usage: {} <COMMAND> [OPTIONS]", compiler_name);
     println!("  COMMAND:");
     println!("    build <name>     Build the program with the specified name.");
     println!("      OPTIONS:");
-    println!("        -r:            Run the program after compiling it.");
+    build_flag::BuildFlag::print_flags();
     println!("    clean <name>     Clean the output for the program with the specified name.");
     println!("      OPTIONS:");
-    println!("        -e:            Also cleanup the compiled executable.");
+    clean_flag::CleanFlag::print_flags();
 }
 
 /// Checks a condition, and if it fails, prints the usage string, displays the specified error
@@ -59,6 +157,7 @@ pub fn test_condition_with_usage_error(compiler_name: &str, condition: bool, err
 
 /// Checks a condition, and if it fails, displays the specified error and then exits with exit
 /// code 1.
+#[allow(dead_code)]
 pub fn test_condition(condition: bool, error: &str) {
     if condition {
         return;
