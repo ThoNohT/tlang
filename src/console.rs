@@ -1,10 +1,10 @@
-mod flag {
+mod compiler_flag {
     use std::collections::HashMap;
     use std::collections::HashSet;
     use std::hash::Hash;
 
     /// A flag that can be used to define custom behavior for a command.
-    pub trait Flag {
+    pub trait CompilerFlag {
         /// Returns a map for all flags, indexed by the string that triggers the flag.
         fn all_flags() -> HashMap<&'static str, Self> where Self : Sized;
 
@@ -13,17 +13,17 @@ mod flag {
 
         /// Converts a string into a flag, if it is specified in all_flags.
         fn from_string(flag: &str) -> Option<Self>
-            where Self: Flag, Self: Clone
+            where Self: CompilerFlag, Self: Clone
         {
             let map = Self::all_flags();
-            return map.get(flag).cloned();
+            map.get(flag).cloned()
         }
 
         /// Converts an iterator of strings into a set containing all valid flags specified in this iterator.
         fn accumulate<'a, I>(args: I) -> HashSet<Self>
-            where I: Iterator<Item = &'a str>, Self: Flag, Self: Clone, Self: Eq, Self: Hash
+            where I: Iterator<Item = &'a str>, Self: CompilerFlag, Self: Clone, Self: Eq, Self: Hash
         {
-            return HashSet::from_iter(args.filter_map(Self::from_string));
+            HashSet::from_iter(args.filter_map(Self::from_string))
         }
 
         /// Prints all flags of the specified type, including their explanation.
@@ -39,7 +39,7 @@ mod flag {
 
 mod build_flag {
     use std::collections::HashMap;
-    use crate::console::flag::Flag;
+    use crate::console::compiler_flag::CompilerFlag;
 
     #[derive(PartialEq, Eq, Clone, Hash)]
     pub enum BuildFlag {
@@ -49,18 +49,18 @@ mod build_flag {
         DumpCheckedSyntaxTree
     }
 
-    impl Flag for BuildFlag {
+    impl CompilerFlag for BuildFlag {
         fn all_flags() -> HashMap<&'static str, BuildFlag> {
-            return HashMap::from([
+            HashMap::from([
                 ("-r", BuildFlag::Run),
                 ("-dt", BuildFlag::DumpLexerTokens),
                 ("-dtu", BuildFlag::DumpUncheckedSyntaxTree),
                 ("-dtc", BuildFlag::DumpCheckedSyntaxTree),
-            ]);
+            ])
         }
 
         fn explain(flag: &BuildFlag) -> &str {
-            return match flag {
+            match flag {
                 BuildFlag::Run => "Run the program after compiling it.",
                 BuildFlag::DumpLexerTokens => "Dump the tokens produced by the lexer and exit.",
                 BuildFlag::DumpUncheckedSyntaxTree => "Dump the unchecked syntax tree produced by the parser and exit.",
@@ -72,22 +72,22 @@ mod build_flag {
 
 mod clean_flag {
     use std::collections::HashMap;
-    use crate::console::flag::Flag;
+    use crate::console::compiler_flag::CompilerFlag;
 
     #[derive(PartialEq, Eq, Clone, Hash)]
     pub enum CleanFlag {
         IncludeExe,
     }
 
-    impl Flag for CleanFlag {
+    impl CompilerFlag for CleanFlag {
         fn all_flags() -> HashMap<&'static str, CleanFlag> {
-            return HashMap::from([
+            HashMap::from([
                 ("-e", CleanFlag::IncludeExe),
-            ]);
+            ])
         }
 
         fn explain(flag: &CleanFlag) -> &str {
-            return match flag {
+            match flag {
                 CleanFlag::IncludeExe => "Also cleanup the compiled executable.",
             }
         }
@@ -108,7 +108,7 @@ use std::fmt;
 use std::process::exit;
 use std::process::Command;
 use std::str;
-use crate::console::flag::Flag;
+use crate::console::compiler_flag::CompilerFlag;
 
 /// Implementation of ReturnOnError for a Result with a displayable error.
 impl<T, E> ReturnOnError<T, E> for Result<T, E>
@@ -124,7 +124,7 @@ where E: fmt::Display,
                 exit(1);
             }
             Ok(res) => {
-                return res;
+                res
             }
         }
     }
@@ -146,25 +146,21 @@ pub fn print_usage(compiler_name: &str) {
 /// Checks a condition, and if it fails, prints the usage string, displays the specified error
 /// and then exits with exit code 1.
 pub fn test_condition_with_usage_error(compiler_name: &str, condition: bool, error: &str) {
-    if condition {
-        return;
+    if !condition {
+        print_usage(compiler_name);
+        e_red!(error);
+        exit(1);
     }
-
-    print_usage(compiler_name);
-    e_red!(error);
-    exit(1);
 }
 
 /// Checks a condition, and if it fails, displays the specified error and then exits with exit
 /// code 1.
 #[allow(dead_code)]
 pub fn test_condition(condition: bool, error: &str) {
-    if condition {
-        return;
+    if !condition {
+        e_red!(error);
+        exit(1);
     }
-
-    e_red!(error);
-    exit(1);
 }
 
 /// Runs a command, and echoes the command to sdtout.
@@ -189,6 +185,6 @@ pub fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
