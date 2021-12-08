@@ -51,14 +51,14 @@ mod project {
     impl<'a> TopLevelStatement<'a> {
         pub fn subroutine(self: &Self) -> Option<TopLevelStatement<'a>> {
             match self {
-                TopLevelStatement::Subroutine(_, _) => Some(self.clone()),
+                Self::Subroutine(_, _) => Some(self.clone()),
                 _ => None,
             }
         }
 
         pub fn statement(self: &Self) -> Option<Statement<'a>> {
             match self {
-                TopLevelStatement::Stmt(stmt) => Some(stmt.clone()),
+                Self::Stmt(stmt) => Some(stmt.clone()),
                 _ => None,
             }
         }
@@ -125,14 +125,14 @@ mod unchecked_project {
     impl<'a> UncheckedStatement<'a> {
         pub fn call(self: &Self) -> Option<UncheckedStatement<'a>> {
             match self {
-                UncheckedStatement::UCall(_) => Some(self.clone()),
+                Self::UCall(_) => Some(self.clone()),
                 _ => None,
             }
         }
 
         pub fn name(self: &Self) -> Option<SubroutineName<'a>> {
             match self {
-                UncheckedStatement::UCall(name) => Some(name.clone()),
+                Self::UCall(name) => Some(name.clone()),
                 _ => None,
             }
         }
@@ -147,28 +147,28 @@ mod unchecked_project {
     impl<'a> UncheckedTopLevelStatement<'a> {
         pub fn subroutine(self: &Self) -> Option<UncheckedTopLevelStatement<'a>> {
             match self {
-                UncheckedTopLevelStatement::USubroutine(_, _) => Some(self.clone()),
+                Self::USubroutine(_, _) => Some(self.clone()),
                 _ => None,
             }
         }
 
         pub fn statement(self: &Self) -> Option<UncheckedStatement<'a>> {
             match self {
-                UncheckedTopLevelStatement::UStmt(stmt) => Some(stmt.clone()),
+                Self::UStmt(stmt) => Some(stmt.clone()),
                 _ => None,
             }
         }
 
         pub fn subroutine_statements(self: &Self) -> Vec<UncheckedStatement<'a>> {
             match self {
-                UncheckedTopLevelStatement::USubroutine(_, stmts) => stmts.clone(),
+                Self::USubroutine(_, stmts) => stmts.clone(),
                 _ => Vec::new(),
             }
         }
 
         pub fn name(self: &Self) -> Option<SubroutineName<'a>> {
             match self {
-                UncheckedTopLevelStatement::USubroutine(name, _) => Some(name.clone()),
+                Self::USubroutine(name, _) => Some(name.clone()),
                 _ => None,
             }
         }
