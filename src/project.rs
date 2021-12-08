@@ -8,7 +8,7 @@ mod project {
     }
 
     impl<'a> SubroutineName<'a> {
-        pub fn value(self: Self) -> &'a str {
+        pub fn value(self: &Self) -> &'a str {
             let SubroutineName::SubroutineName(value) = self;
             value
         }
@@ -49,17 +49,17 @@ mod project {
     }
 
     impl<'a> TopLevelStatement<'a> {
-        pub fn subroutine(self: Self) -> Option<TopLevelStatement<'a>> {
+        pub fn subroutine(self: &Self) -> Option<TopLevelStatement<'a>> {
             match self {
-                TopLevelStatement::Subroutine(_, _) => Some(self),
+                TopLevelStatement::Subroutine(_, _) => Some(self.clone()),
                 _ => None,
             }
         }
 
-        pub fn statement(self: Self) -> Option<Statement<'a>> {
+        pub fn statement(self: &Self) -> Option<Statement<'a>> {
             match self {
-                TopLevelStatement::Stmt(stmt) => Some(stmt),
-                _ =>  None,
+                TopLevelStatement::Stmt(stmt) => Some(stmt.clone()),
+                _ => None,
             }
         }
     }
@@ -72,16 +72,18 @@ mod project {
     }
 
     impl<'a> Program<'a> {
-        pub fn subroutines(self: Self) -> Vec<TopLevelStatement<'a>> {
-            // TODO: Can I implement this without cloning s: TopLevelStatement?
-            // Without clone, it requires the Copy trait, which is not implemented by Vec.
-            self.stmts.iter().filter_map(|s| s.clone().subroutine()).collect::<Vec<TopLevelStatement<'a>>>()
+        pub fn subroutines(self: &Self) -> Vec<TopLevelStatement<'a>> {
+            self.stmts
+                .iter()
+                .filter_map(|s| s.subroutine())
+                .collect::<Vec<TopLevelStatement<'a>>>()
         }
 
-        pub fn statements(self: Self) -> Vec<Statement<'a>> {
-            // TODO: Can I implement this without cloning s: TopLevelStatement?
-            // Without clone, it requires the Copy trait, which is not implemented by Vec.
-            self.stmts.iter().filter_map(|s| s.clone().statement()).collect::<Vec<Statement<'a>>>()
+        pub fn statements(self: &Self) -> Vec<Statement<'a>> {
+            self.stmts
+                .iter()
+                .filter_map(|s| s.statement())
+                .collect::<Vec<Statement<'a>>>()
         }
     }
 
@@ -93,11 +95,14 @@ mod project {
     }
 
     /// A complete project, parsed and checked from a file.
-    pub struct Project<'a> { project_type: ProjectType<'a>, program: Program<'a> }
+    pub struct Project<'a> {
+        project_type: ProjectType<'a>,
+        program: Program<'a>,
+    }
 }
 
 mod unchecked_project {
-    use crate::project::project::{SubroutineName, ProjectType};
+    use crate::project::project::{ProjectType, SubroutineName};
 
     #[derive(Clone)]
     pub enum UncheckedStringLiteral<'a> {
@@ -118,16 +123,16 @@ mod unchecked_project {
     }
 
     impl<'a> UncheckedStatement<'a> {
-        pub fn call(self: Self) -> Option<UncheckedStatement<'a>> {
+        pub fn call(self: &Self) -> Option<UncheckedStatement<'a>> {
             match self {
-                UncheckedStatement::UCall(_) => Some(self),
+                UncheckedStatement::UCall(_) => Some(self.clone()),
                 _ => None,
             }
         }
 
-        pub fn name(self: Self) -> Option<SubroutineName<'a>> {
+        pub fn name(self: &Self) -> Option<SubroutineName<'a>> {
             match self {
-                UncheckedStatement::UCall(name) => Some(name),
+                UncheckedStatement::UCall(name) => Some(name.clone()),
                 _ => None,
             }
         }
@@ -140,30 +145,30 @@ mod unchecked_project {
     }
 
     impl<'a> UncheckedTopLevelStatement<'a> {
-        pub fn subroutine(self: Self) -> Option<UncheckedTopLevelStatement<'a>> {
+        pub fn subroutine(self: &Self) -> Option<UncheckedTopLevelStatement<'a>> {
             match self {
-                UncheckedTopLevelStatement::USubroutine(_, _) => Some(self),
+                UncheckedTopLevelStatement::USubroutine(_, _) => Some(self.clone()),
                 _ => None,
             }
         }
 
-        pub fn statement(self: Self) -> Option<UncheckedStatement<'a>> {
+        pub fn statement(self: &Self) -> Option<UncheckedStatement<'a>> {
             match self {
-                UncheckedTopLevelStatement::UStmt(stmt) => Some(stmt),
-                _ =>  None,
+                UncheckedTopLevelStatement::UStmt(stmt) => Some(stmt.clone()),
+                _ => None,
             }
         }
 
-        pub fn subroutine_statements(self: Self) -> Vec<UncheckedStatement<'a>> {
+        pub fn subroutine_statements(self: &Self) -> Vec<UncheckedStatement<'a>> {
             match self {
-                UncheckedTopLevelStatement::USubroutine(_, stmts) => stmts,
+                UncheckedTopLevelStatement::USubroutine(_, stmts) => stmts.clone(),
                 _ => Vec::new(),
             }
         }
 
-        pub fn name(self: Self) -> Option<SubroutineName<'a>> {
+        pub fn name(self: &Self) -> Option<SubroutineName<'a>> {
             match self {
-                UncheckedTopLevelStatement::USubroutine(name, _) => Some(name),
+                UncheckedTopLevelStatement::USubroutine(name, _) => Some(name.clone()),
                 _ => None,
             }
         }
@@ -175,35 +180,44 @@ mod unchecked_project {
     }
 
     impl<'a> UncheckedProgram<'a> {
-        pub fn subroutines(self: Self) -> Vec<UncheckedTopLevelStatement<'a>> {
-            // TODO: Can I implement this without cloning s: UncheckedTopLevelStatement?
-            // Without clone, it requires the Copy trait, which is not implemented by Vec.
+        pub fn subroutines(self: &Self) -> Vec<UncheckedTopLevelStatement<'a>> {
             let UncheckedProgram::UProgram(stmts) = self;
-            stmts.iter().filter_map(|s| s.clone().subroutine()).collect::<Vec<UncheckedTopLevelStatement<'a>>>()
+            stmts
+                .iter()
+                .filter_map(UncheckedTopLevelStatement::subroutine)
+                .collect::<Vec<UncheckedTopLevelStatement<'a>>>()
         }
 
-        pub fn statements(self: Self) -> Vec<UncheckedStatement<'a>> {
-            // TODO: Can I implement this without cloning s: UncheckedTopLevelStatement?
-            // Without clone, it requires the Copy trait, which is not implemented by Vec.
+        pub fn statements(self: &Self) -> Vec<UncheckedStatement<'a>> {
             let UncheckedProgram::UProgram(stmts) = self;
-            stmts.iter().filter_map(|s| s.clone().statement()).collect::<Vec<UncheckedStatement<'a>>>()
+            stmts
+                .iter()
+                .filter_map(UncheckedTopLevelStatement::statement)
+                .collect::<Vec<UncheckedStatement<'a>>>()
         }
 
         /// Returns all calls to subroutines that are made in the program.
-        pub fn calls(self: Self) -> Vec<UncheckedStatement<'a>> {
-            // TODO: Can I implement this without cloning self: UncheckedProgram?
-            // Note that turning everything to references fails at the point where Vec::new() is
-            // returned, since we cannot return references to values created in the function.
-            let stmts = self.clone().statements();
-            let mut direct_calls = stmts.iter().filter_map(|s| s.clone().call()).collect::<Vec<UncheckedStatement<'a>>>();
-            let mut subroutine_statements =
-                self.subroutines()
-                .iter().flat_map(|s| s.clone().subroutine_statements()).collect::<Vec<UncheckedStatement<'a>>>()
-                .iter().filter_map(|s| s.clone().call()).collect::<Vec<UncheckedStatement<'a>>>();
+        pub fn calls(self: &Self) -> Vec<UncheckedStatement<'a>> {
+            let stmts = self.statements();
+            let mut direct_calls = stmts
+                .iter()
+                .filter_map(UncheckedStatement::call)
+                .collect::<Vec<UncheckedStatement<'a>>>();
+            let mut subroutine_statements = self
+                .subroutines()
+                .iter()
+                .flat_map(UncheckedTopLevelStatement::subroutine_statements)
+                .collect::<Vec<UncheckedStatement<'a>>>()
+                .iter()
+                .filter_map(UncheckedStatement::call)
+                .collect::<Vec<UncheckedStatement<'a>>>();
             direct_calls.append(&mut subroutine_statements);
             direct_calls
         }
     }
 
-    pub struct UncheckedProject<'a> { project_type: ProjectType<'a>, program: UncheckedProgram<'a> }
+    pub struct UncheckedProject<'a> {
+        project_type: ProjectType<'a>,
+        program: UncheckedProgram<'a>,
+    }
 }
