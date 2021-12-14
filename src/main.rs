@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs::remove_file;
 use std::fs::File;
@@ -66,36 +67,42 @@ pub fn write_x86_64_linux_nasm(file_name: &str, program: String) -> console::App
 }
 
 
-fn parse_file(file_name: &str) -> console::AppResult<String> {
-    let mut file = File::open(file_name).map_err(|_| "Failed to open input file.".to_string())?;
+fn read_file(file_name: &str) -> console::AppResult<String> {
+    let mut file = File::open(file_name).map_err(|e| format!("Failed to open input file: {}", e))?;
     let mut buf: Vec<u8> = Vec::new();
     file.read_to_end(&mut buf)
-        .map_err(|_| "Failed reading input file.".to_string())?;
+        .map_err(|e| format!("Failed reading input file: {}", e))?;
     return String::from_utf8(buf)
         .map_err(|_| "Unable to convert utf8 bytes into string.".to_string());
 }
 
-fn compile(project_name: &str) -> console::AppResult<()> {
-    let program: String = parse_file(format!("{}.tl", project_name).as_str())?;
+fn compile(file_name: &str) -> console::AppResult<()> {
+    let input: String = read_file(format!("{}", file_name).as_str())?;
+    let tokens = crate::lexer::lexer::lex_file(HashSet::new(), file_name, &input);
 
-    println!("Generating {}.asm.", project_name);
-    write_x86_64_linux_nasm(format!("{}.asm", project_name).as_str(), program)?;
+    for (i, t) in tokens.iter().enumerate() {
+        println!("{}: {}", i, t.to_string());
+    }
 
-    console::run_cmd_echoed(vec![
-        "nasm",
-        "-f",
-        "elf64",
-        "-o",
-        format!("{}.o", project_name).as_str(),
-        format!("{}.asm", project_name).as_str(),
-    ])?;
 
-    console::run_cmd_echoed(vec![
-        "ld",
-        format!("{}.o", project_name).as_str(),
-        "-o",
-        format!("{}", project_name).as_str(),
-    ])?;
+    //println!("Generating {}.asm.", project_name);
+    //write_x86_64_linux_nasm(format!("{}.asm", project_name).as_str(), program)?;
+
+    //console::run_cmd_echoed(vec![
+    //    "nasm",
+    //    "-f",
+    //    "elf64",
+    //    "-o",
+    //    format!("{}.o", project_name).as_str(),
+    //    format!("{}.asm", project_name).as_str(),
+    //])?;
+
+    //console::run_cmd_echoed(vec![
+    //    "ld",
+    //    format!("{}.o", project_name).as_str(),
+    //    "-o",
+    //    format!("{}", project_name).as_str(),
+    //])?;
 
     return Ok(());
 }

@@ -1,5 +1,5 @@
 /// A position for a token.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Position {
     line: u64,
     col: u64,
@@ -7,6 +7,7 @@ pub struct Position {
 
 impl Position {
     /// Convert a position to a human readable string.
+    #[allow(dead_code)]
     pub fn to_string(self: &Self) -> String {
         format!("Line {}, col {}", self.line + 1, self.col + 1)
     }
@@ -23,7 +24,7 @@ impl Position {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Range {
     file: String,
     start_line: u64,
@@ -34,6 +35,7 @@ pub struct Range {
 
 impl Range {
     /// Converts a range to a string that points to a the starting position of the range in its file.
+    #[allow(dead_code)]
     pub fn to_string(self: &Self) -> String {
         format!(
             "{}:{}:{}",
@@ -67,6 +69,7 @@ impl Range {
     }
 
     /// Get the start position of a range.
+    #[allow(dead_code)]
     pub fn start_pos(self: &Self) -> Position {
         Position {
             line: self.start_line,
@@ -75,6 +78,7 @@ impl Range {
     }
 
     /// Get the end position of a range.
+    #[allow(dead_code)]
     pub fn end_pos(self: &Self) -> Position {
         Position {
             line: self.end_line,
@@ -101,7 +105,8 @@ impl TokenData {
     /// Returns a string that can be used for displaying a token in error messages.
     /// withValue determines whether the value of the token is also included.
     /// Note that for string literals, the value is never included.
-    pub fn to_string(self: Self, with_value: bool) -> String {
+    #[allow(dead_code)]
+    pub fn to_string(self: &Self, with_value: bool) -> String {
         match self {
             Self::IndentationToken(i) => {
                 if with_value {
@@ -147,6 +152,7 @@ impl TokenData {
 
     /// Returns the value of an identifier in a token, if it is an identifier token, None
     /// otherwise.
+    #[allow(dead_code)]
     pub fn try_get_identifier(self: Self) -> Option<String> {
         match self {
             Self::IdentifierToken(i) => Some(i),
@@ -156,6 +162,7 @@ impl TokenData {
 
     /// Returns the value of a string literal in a token, if it is a string literal token, None
     /// otherwise.
+    #[allow(dead_code)]
     pub fn try_get_string_literal(self: Self) -> Option<String> {
         match self {
             Self::StringLiteralToken(sl) => Some(sl),
@@ -164,6 +171,7 @@ impl TokenData {
     }
 
     /// Returns the value of a number in a token, if it is a number token, Noen otherwise.
+    #[allow(dead_code)]
     pub fn try_get_number(self: Self) -> Option<i64> {
         match self {
             Self::NumberToken(n) => Some(n),
@@ -174,7 +182,7 @@ impl TokenData {
 
 /// A token produced by the lexer, adds information about the token's location and whether it was
 /// preceded by whitespace.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
     range: Range,
     data: TokenData,
@@ -183,7 +191,7 @@ pub struct Token {
 
 impl Token {
     /// Converts a token to a string that can be used for debugging purposes.
-    pub fn to_string(self: Self) -> String {
+    pub fn to_string(self: &Self) -> String {
         format!(
             "[ {} ; whitespaceBefore: {} ; {:?} ]",
             self.range.to_full_string(),
@@ -286,9 +294,11 @@ pub mod lexer {
                 '\n' => {
                     self.pos.line = self.pos.line + 1;
                     self.pos.col = 0;
+                    self.start_of_line = true;
                 }
                 _ => {
                     self.pos.col = self.pos.col + 1;
+                    self.start_of_line = false;
                 }
             }
 
@@ -340,14 +350,6 @@ pub mod lexer {
                 msg
             );
             crate::console::test_condition(pred, msg.as_str());
-        }
-
-        fn assert_not_at_end(self: &Self, msg: &str) {
-            self.check_lexer_predicate(!self.at_end_of_input, msg);
-        }
-
-        fn assert_digit(self: &Self, msg: &str) {
-            self.check_lexer_predicate(self.cur_char.is_digit(10), msg);
         }
     }
 
@@ -445,10 +447,6 @@ pub mod lexer {
                 !state.at_end_of_input,
                 "Input ended before escaped character in string literal ended.",
             );
-        }
-
-        fn assert_digit(state: &LexerState) {
-            state.check_lexer_predicate(!state.cur_char.is_digit(10), "Invalid escaped character.");
         }
 
         // An escaped character can be a charcter from mapped_chars.
