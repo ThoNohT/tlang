@@ -230,15 +230,10 @@ pub mod lexer {
     struct LexerState<'a> {
         filename: &'a str,
 
-        // Primary input.
         input: LexerInput<'a>,
-        index: u64,
+
         pos: Position,
         prev_pos: Position,
-
-        // Backup input.
-        backup_input: LexerInput<'a>,
-        backup_index: u64,
         backup_pos: Position,
 
         // Output.
@@ -259,13 +254,10 @@ pub mod lexer {
                 filename,
 
                 // Primary input.
-                index: 0,
                 pos: Position::zero(),
                 prev_pos: Position::zero(),
 
                 // Backup input.
-                backup_input: sanitized_input.clone(),
-                backup_index: 0,
                 backup_pos: Position::zero(),
 
                 // Output.
@@ -282,7 +274,7 @@ pub mod lexer {
             }
         }
 
-        /// Advance the index, and the position of the lexer.
+        /// Advance the input, and the position of the lexer.
         fn next_char(self: &mut Self) {
             if self.at_end_of_input {
                 return;
@@ -307,7 +299,6 @@ pub mod lexer {
             match next_char {
                 Some(c) => {
                     self.cur_char = c;
-                    self.index = self.index + 1;
                 }
                 None => {
                     self.at_end_of_input = true;
@@ -320,8 +311,6 @@ pub mod lexer {
         /// to this state later if needed.
         fn set_backup_point(self: &mut Self) {
             self.backup_pos = self.pos.clone();
-            self.backup_index = self.backup_index;
-            self.backup_input = self.input.clone();
         }
 
         /// Adds a token to the output list.
@@ -366,10 +355,12 @@ pub mod lexer {
 
         match state.spaces_per_indent {
             None => {
+                let mut spi = 0;
                 // The number of spaces per indent is not yet known, the total number of spaces
-                // encountered during the f irst time leading whitespace occurs is taken as the
+                // encountered during the first time leading whitespace occurs is taken as the
                 // number of spaces per indent.
                 while !state.at_end_of_input && is_whitespace(state.cur_char) {
+                    spi += 1;
                     state.check_lexer_predicate(
                         state.cur_char == ' ',
                         "Leading whitespace may only consist of spaces.",
@@ -377,13 +368,15 @@ pub mod lexer {
                     state.next_char();
                 }
 
-                state.spaces_per_indent = Some(state.index - state.backup_index);
+                state.spaces_per_indent = Some(spi);
                 state.add_token(TokenData::IndentationToken(1));
             }
             Some(spi) => {
                 // The number of spaces per indent is known, so take a multiple of this number of
                 // spaces, and re turn this as the indent level.
+                let mut n_spaces = 0;
                 while !state.at_end_of_input && is_whitespace(state.cur_char) {
+                    n_spaces += 1;
                     state.check_lexer_predicate(
                         state.cur_char == ' ',
                         "Leading whitespace may only consist of spaces.",
@@ -391,7 +384,6 @@ pub mod lexer {
                     state.next_char();
                 }
 
-                let n_spaces = state.index - state.backup_index;
                 let extra_space = n_spaces % spi;
                 let msg = format!(
                     "{} {}, but got {}, which is {} too many or {} too few.",
