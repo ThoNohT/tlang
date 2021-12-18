@@ -1,8 +1,8 @@
 /// A position for a token.
 #[derive(Copy, Clone, Debug)]
 pub struct Position {
-    line: u64,
-    col: u64,
+    pub line: u64,
+    pub col: u64,
 }
 
 impl Position {
@@ -26,11 +26,11 @@ impl Position {
 
 #[derive(Clone, Debug)]
 pub struct Range {
-    file: String,
-    start_line: u64,
-    start_col: u64,
-    end_line: u64,
-    end_col: u64,
+    pub file: String,
+    pub start_line: u64,
+    pub start_col: u64,
+    pub end_line: u64,
+    pub end_col: u64,
 }
 
 impl Range {
@@ -88,7 +88,7 @@ impl Range {
 }
 
 /// Encodes all the different types of tokens, with their data.
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TokenData {
     IndentationToken(u64),
     KeywordToken(String),
@@ -184,9 +184,9 @@ impl TokenData {
 /// preceded by whitespace.
 #[derive(Clone, Debug)]
 pub struct Token {
-    range: Range,
-    data: TokenData,
-    whitespace_before: bool,
+    pub range: Range,
+    pub data: TokenData,
+    pub whitespace_before: bool,
 }
 
 impl Token {

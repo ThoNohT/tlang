@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-mod project {
+pub mod project {
     use std::collections::HashMap;
 
     /// The name of a subroutine.
@@ -102,7 +102,7 @@ mod project {
     }
 }
 
-mod unchecked_project {
+pub mod unchecked_project {
     use crate::project::project::{ProjectType, SubroutineName};
 
     #[derive(Clone)]
