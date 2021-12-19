@@ -78,12 +78,18 @@ fn read_file(file_name: &str) -> console::AppResult<String> {
 }
 
 fn compile(file_name: &str) -> console::AppResult<()> {
-    let input: String = read_file(format!("{}", file_name).as_str())?;
-    let tokens = crate::lexer::lexer::lex_file(HashSet::new(), file_name, &input);
+    let input = read_file(format!("{}", file_name).as_str())?;
+
+    let keywords = HashSet::from(["Executable", "let", "call", "print"]);
+
+    let tokens = crate::lexer::lexer::lex_file(keywords, file_name, &input);
 
     for (i, t) in tokens.iter().enumerate() {
         println!("{}: {}", i, t.to_string());
     }
+
+    let project = crate::parser::parse_project(tokens);
+    println!("{:#?}", project);
 
 
     //println!("Generating {}.asm.", project_name);

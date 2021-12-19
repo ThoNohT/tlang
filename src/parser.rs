@@ -69,6 +69,13 @@ impl<'a> ParserState<'a> {
         self.current_token = self.next_token;
         self.next_token = self.input.next().unwrap_or(self.next_token);
     }
+
+    /// Can be used to debug the current state while parsing.
+    /// Displays the specified message, and the current token, including its position.
+    #[allow(dead_code)]
+    fn dbg(self: &mut Self, msg: &str) {
+        println!("{}: {}", msg, self.current_token.to_string());
+    }
 }
 
 /// Performs a check on the current token, and if it fails, displays a message that parsing the
@@ -78,9 +85,9 @@ fn check_and_next<'a>(state: &'a mut ParserState, f: fn(&Token) -> bool, label: 
     let t = state.current_token;
     let msg = format!(
         "{}: Error parsing {}, unexpected {}.",
-        t.range.to_string(),
+        t.range.to_full_string(),
         label,
-        t.data.to_string(true)
+        t.data.to_string(true),
     );
     console::test_condition(f(t), msg.as_str());
     state.next();
@@ -135,7 +142,8 @@ fn consume_eols<'a>(state: &'a mut ParserState, label: &str) {
         let indented = state.current_token.data.is_indentation(); // Consume any indentation first.
 
         // Then check if there is an end of line token.
-        if state.next_token.data != TokenData::EndOfLineToken() {
+        let t = if indented { state.next_token } else { state.current_token };
+        if t.data != TokenData::EndOfLineToken() {
             return false;
         }
 
@@ -200,6 +208,8 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
         .data
         .try_get_identifier()
         .map(UncheckedVariable::UVariable);
+
+    state.next();
 
     match (str_lit, var_name) {
         (Some(sl), _) => Some(UncheckedStatement::UPrintStr(sl)),

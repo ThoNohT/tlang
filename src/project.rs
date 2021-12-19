@@ -3,7 +3,7 @@ pub mod project {
     use std::collections::HashMap;
 
     /// The name of a subroutine.
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum SubroutineName {
         SubroutineName(String),
     }
@@ -16,19 +16,19 @@ pub mod project {
     }
 
     /// A string literal, including its index in the list of declared string literals.
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum StringLiteral {
         StringLiteral(u64, String),
     }
 
     /// A variable, including its offset in memory.
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum Variable {
         Variable(usize, String),
     }
 
     /// A statement that can either happen on top level or in a subroutine.
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum Statement {
         /// Print a string to stdout.
         PrintStr(StringLiteral),
@@ -41,7 +41,7 @@ pub mod project {
     }
 
     /// A statement that can only happen on the top level.
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum TopLevelStatement {
         /// Define a new subroutine.
         Subroutine(SubroutineName, Vec<Statement>),
@@ -89,6 +89,7 @@ pub mod project {
     }
 
     /// The different types of projects that can be defined.
+    #[derive(Debug)]
     pub enum ProjectType {
         /// An executable gets compiled into an executable file and cannot be referenced.
         /// The parameter is the name of the executable.
@@ -105,17 +106,17 @@ pub mod project {
 pub mod unchecked_project {
     use crate::project::project::{ProjectType, SubroutineName};
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum UncheckedStringLiteral {
         UStringLiteral(String),
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum UncheckedVariable {
         UVariable(String),
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum UncheckedStatement {
         UPrintStr(UncheckedStringLiteral),
         UPrintVar(UncheckedVariable),
@@ -139,7 +140,7 @@ pub mod unchecked_project {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum UncheckedTopLevelStatement {
         USubroutine(SubroutineName, Vec<UncheckedStatement>),
         UStmt(UncheckedStatement),
@@ -175,7 +176,7 @@ pub mod unchecked_project {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub enum UncheckedProgram {
         UProgram(Vec<UncheckedTopLevelStatement>),
     }
@@ -217,6 +218,7 @@ pub mod unchecked_project {
         }
     }
 
+    #[derive(Debug)]
     pub struct UncheckedProject {
         pub project_type: ProjectType,
         pub program: UncheckedProgram,
