@@ -4,12 +4,12 @@ pub mod project {
 
     /// The name of a subroutine.
     #[derive(Clone)]
-    pub enum SubroutineName<'a> {
-        SubroutineName(&'a str),
+    pub enum SubroutineName {
+        SubroutineName(String),
     }
 
-    impl<'a> SubroutineName<'a> {
-        pub fn value(self: &Self) -> &'a str {
+    impl SubroutineName {
+        pub fn value(self: &Self) -> &String {
             let SubroutineName::SubroutineName(value) = self;
             value
         }
@@ -17,47 +17,47 @@ pub mod project {
 
     /// A string literal, including its index in the list of declared string literals.
     #[derive(Clone)]
-    pub enum StringLiteral<'a> {
-        StringLiteral(u64, &'a str),
+    pub enum StringLiteral {
+        StringLiteral(u64, String),
     }
 
     /// A variable, including its offset in memory.
     #[derive(Clone)]
-    pub enum Variable<'a> {
-        Variable(usize, &'a str),
+    pub enum Variable {
+        Variable(usize, String),
     }
 
     /// A statement that can either happen on top level or in a subroutine.
     #[derive(Clone)]
-    pub enum Statement<'a> {
+    pub enum Statement {
         /// Print a string to stdout.
-        PrintStr(StringLiteral<'a>),
+        PrintStr(StringLiteral),
         /// Print the i64 value in a variable.
-        PrintVar(Variable<'a>),
+        PrintVar(Variable),
         /// Call a subroutine.
-        Call(SubroutineName<'a>),
+        Call(SubroutineName),
         /// Assign an i64 to a variable.
-        Assignment(Variable<'a>, i64),
+        Assignment(Variable, i64),
     }
 
     /// A statement that can only happen on the top level.
     #[derive(Clone)]
-    pub enum TopLevelStatement<'a> {
+    pub enum TopLevelStatement {
         /// Define a new subroutine.
-        Subroutine(SubroutineName<'a>, Vec<Statement<'a>>),
+        Subroutine(SubroutineName, Vec<Statement>),
         /// A regular statement.
-        Stmt(Statement<'a>),
+        Stmt(Statement),
     }
 
-    impl<'a> TopLevelStatement<'a> {
-        pub fn subroutine(self: &Self) -> Option<TopLevelStatement<'a>> {
+    impl TopLevelStatement {
+        pub fn subroutine(self: &Self) -> Option<TopLevelStatement> {
             match self {
                 Self::Subroutine(_, _) => Some(self.clone()),
                 _ => None,
             }
         }
 
-        pub fn statement(self: &Self) -> Option<Statement<'a>> {
+        pub fn statement(self: &Self) -> Option<Statement> {
             match self {
                 Self::Stmt(stmt) => Some(stmt.clone()),
                 _ => None,
@@ -66,39 +66,39 @@ pub mod project {
     }
 
     /// The functional part of a project.
-    pub struct Program<'a> {
-        stmts: Vec<TopLevelStatement<'a>>,
-        strings: HashMap<&'a str, u64>,
-        variables: HashMap<&'a str, u64>,
+    pub struct Program {
+        pub stmts: Vec<TopLevelStatement>,
+        pub strings: HashMap<String, u64>,
+        pub variables: HashMap<String, u64>,
     }
 
-    impl<'a> Program<'a> {
-        pub fn subroutines(self: &Self) -> Vec<TopLevelStatement<'a>> {
+    impl Program {
+        pub fn subroutines(self: &Self) -> Vec<TopLevelStatement> {
             self.stmts
                 .iter()
                 .filter_map(|s| s.subroutine())
-                .collect::<Vec<TopLevelStatement<'a>>>()
+                .collect::<Vec<TopLevelStatement>>()
         }
 
-        pub fn statements(self: &Self) -> Vec<Statement<'a>> {
+        pub fn statements(self: &Self) -> Vec<Statement> {
             self.stmts
                 .iter()
                 .filter_map(|s| s.statement())
-                .collect::<Vec<Statement<'a>>>()
+                .collect::<Vec<Statement>>()
         }
     }
 
     /// The different types of projects that can be defined.
-    pub enum ProjectType<'a> {
+    pub enum ProjectType {
         /// An executable gets compiled into an executable file and cannot be referenced.
         /// The parameter is the name of the executable.
-        Executable(&'a str),
+        Executable(String),
     }
 
     /// A complete project, parsed and checked from a file.
-    pub struct Project<'a> {
-        project_type: ProjectType<'a>,
-        program: Program<'a>,
+    pub struct Project {
+        pub project_type: ProjectType,
+        pub program: Program,
     }
 }
 
@@ -106,32 +106,32 @@ pub mod unchecked_project {
     use crate::project::project::{ProjectType, SubroutineName};
 
     #[derive(Clone)]
-    pub enum UncheckedStringLiteral<'a> {
-        UStringLiteral(&'a str),
+    pub enum UncheckedStringLiteral {
+        UStringLiteral(String),
     }
 
     #[derive(Clone)]
-    pub enum UncheckedVariable<'a> {
-        UVariable(&'a str),
+    pub enum UncheckedVariable {
+        UVariable(String),
     }
 
     #[derive(Clone)]
-    pub enum UncheckedStatement<'a> {
-        UPrintStr(UncheckedStringLiteral<'a>),
-        UPrintVar(UncheckedVariable<'a>),
-        UCall(SubroutineName<'a>),
-        UAssignment(UncheckedVariable<'a>, i64),
+    pub enum UncheckedStatement {
+        UPrintStr(UncheckedStringLiteral),
+        UPrintVar(UncheckedVariable),
+        UCall(SubroutineName),
+        UAssignment(UncheckedVariable, i64),
     }
 
-    impl<'a> UncheckedStatement<'a> {
-        pub fn call(self: &Self) -> Option<UncheckedStatement<'a>> {
+    impl UncheckedStatement {
+        pub fn call(self: &Self) -> Option<UncheckedStatement> {
             match self {
                 Self::UCall(_) => Some(self.clone()),
                 _ => None,
             }
         }
 
-        pub fn name(self: &Self) -> Option<SubroutineName<'a>> {
+        pub fn name(self: &Self) -> Option<SubroutineName> {
             match self {
                 Self::UCall(name) => Some(name.clone()),
                 _ => None,
@@ -140,34 +140,34 @@ pub mod unchecked_project {
     }
 
     #[derive(Clone)]
-    pub enum UncheckedTopLevelStatement<'a> {
-        USubroutine(SubroutineName<'a>, Vec<UncheckedStatement<'a>>),
-        UStmt(UncheckedStatement<'a>),
+    pub enum UncheckedTopLevelStatement {
+        USubroutine(SubroutineName, Vec<UncheckedStatement>),
+        UStmt(UncheckedStatement),
     }
 
-    impl<'a> UncheckedTopLevelStatement<'a> {
-        pub fn subroutine(self: &Self) -> Option<UncheckedTopLevelStatement<'a>> {
+    impl UncheckedTopLevelStatement {
+        pub fn subroutine(self: &Self) -> Option<UncheckedTopLevelStatement> {
             match self {
                 Self::USubroutine(_, _) => Some(self.clone()),
                 _ => None,
             }
         }
 
-        pub fn statement(self: &Self) -> Option<UncheckedStatement<'a>> {
+        pub fn statement(self: &Self) -> Option<UncheckedStatement> {
             match self {
                 Self::UStmt(stmt) => Some(stmt.clone()),
                 _ => None,
             }
         }
 
-        pub fn subroutine_statements(self: &Self) -> Vec<UncheckedStatement<'a>> {
+        pub fn subroutine_statements(self: &Self) -> Vec<UncheckedStatement> {
             match self {
                 Self::USubroutine(_, stmts) => stmts.clone(),
                 _ => Vec::new(),
             }
         }
 
-        pub fn name(self: &Self) -> Option<SubroutineName<'a>> {
+        pub fn name(self: &Self) -> Option<SubroutineName> {
             match self {
                 Self::USubroutine(name, _) => Some(name.clone()),
                 _ => None,
@@ -176,49 +176,49 @@ pub mod unchecked_project {
     }
 
     #[derive(Clone)]
-    pub enum UncheckedProgram<'a> {
-        UProgram(Vec<UncheckedTopLevelStatement<'a>>),
+    pub enum UncheckedProgram {
+        UProgram(Vec<UncheckedTopLevelStatement>),
     }
 
-    impl<'a> UncheckedProgram<'a> {
-        pub fn subroutines(self: &Self) -> Vec<UncheckedTopLevelStatement<'a>> {
+    impl UncheckedProgram {
+        pub fn subroutines(self: &Self) -> Vec<UncheckedTopLevelStatement> {
             let UncheckedProgram::UProgram(stmts) = self;
             stmts
                 .iter()
                 .filter_map(UncheckedTopLevelStatement::subroutine)
-                .collect::<Vec<UncheckedTopLevelStatement<'a>>>()
+                .collect::<Vec<UncheckedTopLevelStatement>>()
         }
 
-        pub fn statements(self: &Self) -> Vec<UncheckedStatement<'a>> {
+        pub fn statements(self: &Self) -> Vec<UncheckedStatement> {
             let UncheckedProgram::UProgram(stmts) = self;
             stmts
                 .iter()
                 .filter_map(UncheckedTopLevelStatement::statement)
-                .collect::<Vec<UncheckedStatement<'a>>>()
+                .collect::<Vec<UncheckedStatement>>()
         }
 
         /// Returns all calls to subroutines that are made in the program.
-        pub fn calls(self: &Self) -> Vec<UncheckedStatement<'a>> {
+        pub fn calls(self: &Self) -> Vec<UncheckedStatement> {
             let stmts = self.statements();
             let mut direct_calls = stmts
                 .iter()
                 .filter_map(UncheckedStatement::call)
-                .collect::<Vec<UncheckedStatement<'a>>>();
+                .collect::<Vec<UncheckedStatement>>();
             let mut subroutine_statements = self
                 .subroutines()
                 .iter()
                 .flat_map(UncheckedTopLevelStatement::subroutine_statements)
-                .collect::<Vec<UncheckedStatement<'a>>>()
+                .collect::<Vec<UncheckedStatement>>()
                 .iter()
                 .filter_map(UncheckedStatement::call)
-                .collect::<Vec<UncheckedStatement<'a>>>();
+                .collect::<Vec<UncheckedStatement>>();
             direct_calls.append(&mut subroutine_statements);
             direct_calls
         }
     }
 
-    pub struct UncheckedProject<'a> {
-        project_type: ProjectType<'a>,
-        program: UncheckedProgram<'a>,
+    pub struct UncheckedProject {
+        pub project_type: ProjectType,
+        pub program: UncheckedProgram,
     }
 }

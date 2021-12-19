@@ -152,30 +152,35 @@ impl TokenData {
 
     /// Returns the value of an identifier in a token, if it is an identifier token, None
     /// otherwise.
-    #[allow(dead_code)]
-    pub fn try_get_identifier(self: Self) -> Option<String> {
+    pub fn try_get_identifier(self: &Self) -> Option<String> {
         match self {
-            Self::IdentifierToken(i) => Some(i),
+            Self::IdentifierToken(i) => Some(i.clone()),
             _ => None,
         }
     }
 
     /// Returns the value of a string literal in a token, if it is a string literal token, None
     /// otherwise.
-    #[allow(dead_code)]
-    pub fn try_get_string_literal(self: Self) -> Option<String> {
+    pub fn try_get_string_literal(self: &Self) -> Option<String> {
         match self {
-            Self::StringLiteralToken(sl) => Some(sl),
+            Self::StringLiteralToken(sl) => Some(sl.clone()),
             _ => None,
         }
     }
 
     /// Returns the value of a number in a token, if it is a number token, Noen otherwise.
-    #[allow(dead_code)]
-    pub fn try_get_number(self: Self) -> Option<i64> {
-        match self {
+    pub fn try_get_number(self: &Self) -> Option<i64> {
+        match *self {
             Self::NumberToken(n) => Some(n),
             _ => None,
+        }
+    }
+
+    /// Returns a value indicating whether the token is an indentation token.
+    pub fn is_indentation(self: &Self) -> bool {
+        match *self {
+            Self::IndentationToken(_) => true,
+            _ => false
         }
     }
 }
