@@ -165,6 +165,7 @@ pub fn test_condition(condition: bool, error: &str) {
 
 /// Runs a command, and echoes the command to sdtout.
 /// If the command fails, the output from stderr is returned and the program exits.
+#[allow(dead_code)]
 pub fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
     println!("{}", args.join(" "));
     let output = Command::new(args[0])

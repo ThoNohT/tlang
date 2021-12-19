@@ -35,7 +35,6 @@ pub struct Range {
 
 impl Range {
     /// Converts a range to a string that points to a the starting position of the range in its file.
-    #[allow(dead_code)]
     pub fn to_string(self: &Self) -> String {
         format!(
             "{}:{}:{}",
@@ -105,7 +104,6 @@ impl TokenData {
     /// Returns a string that can be used for displaying a token in error messages.
     /// withValue determines whether the value of the token is also included.
     /// Note that for string literals, the value is never included.
-    #[allow(dead_code)]
     pub fn to_string(self: &Self, with_value: bool) -> String {
         match self {
             Self::IndentationToken(i) => {

@@ -93,18 +93,6 @@ fn check_and_next<'a>(state: &'a mut ParserState, f: fn(&Token) -> bool, label: 
     state.next();
 }
 
-/// Consumes the current token, returns the result of the check on the token. If the check
-/// succeeds, moves to the next token.
-fn try_consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>) -> Option<T> {
-    match f(state.current_token) {
-        Some(v) => {
-            state.next();
-            Some(v)
-        }
-        None => None,
-    }
-}
-
 /// Consumes the current token, if the check on the token returns Some. If the check returns None,
 /// displays an error message that parsing the entithy with the provided label failed, and exits
 /// with error code 1.
