@@ -41,7 +41,7 @@ impl Range {
             "{}:{}:{}",
             self.file,
             self.start_line + 1,
-            self.start_col + 1
+            self.start_col + 1,
         )
     }
 
@@ -53,7 +53,7 @@ impl Range {
             self.start_line + 1,
             self.start_col + 1,
             self.end_line + 1,
-            self.end_col + 1
+            self.end_col + 1,
         )
     }
 
@@ -570,8 +570,9 @@ pub mod lexer {
             } else if state.cur_char == '"' {
                 lex_string_literal(&mut state);
             } else if state.cur_char == '\n' {
-                state.add_token(TokenData::EndOfLineToken());
+                state.set_backup_point();
                 state.next_char();
+                state.add_token(TokenData::EndOfLineToken());
             } else {
                 lex_symbol(&mut state);
             }
