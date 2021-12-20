@@ -130,7 +130,11 @@ fn consume_eols<'a>(state: &'a mut ParserState, label: &str) {
         let indented = state.current_token.data.is_indentation(); // Consume any indentation first.
 
         // Then check if there is an end of line token.
-        let t = if indented { state.next_token } else { state.current_token };
+        let t = if indented {
+            state.next_token
+        } else {
+            state.current_token
+        };
         if t.data != TokenData::EndOfLineToken() {
             return false;
         }
