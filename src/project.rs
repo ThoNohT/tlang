@@ -3,7 +3,7 @@ pub mod project {
     use std::collections::HashMap;
 
     /// The name of a subroutine.
-    #[derive(Clone, Debug)]
+    #[derive(PartialEq, Eq, Hash, Clone, Debug)]
     pub enum SubroutineName {
         SubroutineName(String),
     }

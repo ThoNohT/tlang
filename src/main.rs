@@ -14,6 +14,7 @@ mod console;
 mod project;
 mod lexer;
 mod parser;
+mod checker;
 
 pub fn asm_encode_string(str: &str) -> String {
     let (_, in_str, r) = str.chars().fold(
