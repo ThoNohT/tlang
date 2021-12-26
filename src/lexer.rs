@@ -1,8 +1,8 @@
 /// A position for a token.
 #[derive(Copy, Clone, Debug)]
 pub struct Position {
-    pub line: u64,
-    pub col: u64,
+    pub line: usize,
+    pub col: usize,
 }
 
 impl Position {
@@ -27,10 +27,10 @@ impl Position {
 #[derive(Clone, Debug)]
 pub struct Range {
     pub file: String,
-    pub start_line: u64,
-    pub start_col: u64,
-    pub end_line: u64,
-    pub end_col: u64,
+    pub start_line: usize,
+    pub start_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
 }
 
 impl Range {
@@ -89,7 +89,7 @@ impl Range {
 /// Encodes all the different types of tokens, with their data.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TokenData {
-    IndentationToken(u64),
+    IndentationToken(usize),
     KeywordToken(String),
     IdentifierToken(String),
     SymbolToken(String),
@@ -245,7 +245,7 @@ pub mod lexer {
         // Other state.
         cur_char: char,
         start_of_line: bool,
-        spaces_per_indent: Option<u64>,
+        spaces_per_indent: Option<usize>,
         whitespace_before: bool,
         at_end_of_input: bool,
     }

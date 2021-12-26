@@ -285,7 +285,7 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
 /// tokens are consumed.
 /// If the next token is the desired indent token (greater than 0), it is consumed, otherwise
 /// nothing is consumed.
-fn check_indent<'a>(state: &'a mut ParserState, indent: u64) -> bool {
+fn check_indent<'a>(state: &'a mut ParserState, indent: usize) -> bool {
     match indent {
         0 => !state.current_token.data.is_indentation(),
         _ => {
@@ -302,7 +302,7 @@ fn check_indent<'a>(state: &'a mut ParserState, indent: u64) -> bool {
 /// Tries to parse a statement. This pa rser first checks whether the next token has the correct
 /// indentation, then applies onfe of the parsers for the specific statements. Consumes no tokens
 /// if the indentation is incorrect, or no statement was parsed.
-fn try_parse_statement<'a>(state: &'a mut ParserState, indent: u64) -> Option<UncheckedStatement> {
+fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<UncheckedStatement> {
     state.backup();
 
     if !check_indent(state, indent) {

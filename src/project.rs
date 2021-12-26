@@ -18,7 +18,7 @@ pub mod project {
     /// A string literal, including its index in the list of declared string literals.
     #[derive(Clone, Debug)]
     pub enum StringLiteral {
-        StringLiteral(u64, String),
+        StringLiteral(usize, String),
     }
 
     /// A variable, including its offset in memory.
@@ -68,8 +68,8 @@ pub mod project {
     /// The functional part of a project.
     pub struct Program {
         pub stmts: Vec<TopLevelStatement>,
-        pub strings: HashMap<String, u64>,
-        pub variables: HashMap<String, u64>,
+        pub strings: HashMap<String, usize>,
+        pub variables: HashMap<String, usize>,
     }
 
     impl Program {
