@@ -66,6 +66,7 @@ pub mod project {
     }
 
     /// The functional part of a project.
+    #[derive(Debug)]
     pub struct Program {
         pub stmts: Vec<TopLevelStatement>,
         pub strings: HashMap<String, usize>,
@@ -89,7 +90,7 @@ pub mod project {
     }
 
     /// The different types of projects that can be defined.
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub enum ProjectType {
         /// An executable gets compiled into an executable file and cannot be referenced.
         /// The parameter is the name of the executable.
@@ -97,6 +98,7 @@ pub mod project {
     }
 
     /// A complete project, parsed and checked from a file.
+    #[derive(Debug)]
     pub struct Project {
         pub project_type: ProjectType,
         pub program: Program,
@@ -177,22 +179,22 @@ pub mod unchecked_project {
     }
 
     #[derive(Clone, Debug)]
-    pub enum UncheckedProgram {
-        UProgram(Vec<UncheckedTopLevelStatement>),
+    pub struct UncheckedProgram {
+        pub stmts: Vec<UncheckedTopLevelStatement>,
     }
 
     impl UncheckedProgram {
+        /// Returns all top-level statements that are subroutine calls in the program.
         pub fn subroutines(self: &Self) -> Vec<UncheckedTopLevelStatement> {
-            let UncheckedProgram::UProgram(stmts) = self;
-            stmts
+            self.stmts
                 .iter()
                 .filter_map(UncheckedTopLevelStatement::subroutine)
                 .collect::<Vec<UncheckedTopLevelStatement>>()
         }
 
+        /// Returns all top-level statements that are statements in the program.
         pub fn statements(self: &Self) -> Vec<UncheckedStatement> {
-            let UncheckedProgram::UProgram(stmts) = self;
-            stmts
+            self.stmts
                 .iter()
                 .filter_map(UncheckedTopLevelStatement::statement)
                 .collect::<Vec<UncheckedStatement>>()

@@ -9,15 +9,7 @@ pub enum CheckIssue {
 }
 
 impl CheckIssue {
-    /// Indicates whether an issue is an error that prevents compilation.
-    pub fn is_error(self: &Self) -> bool {
-        match self {
-            Self::CheckError(_) => true,
-            _ => false,
-        }
-    }
-
-    /// COnverts an issue to a string to be shown to the user, including its severity.
+    /// Converts an issue to a string to be shown to the user, including its severity.
     pub fn to_string(self: &Self) -> String {
         match self {
             Self::CheckError(err) => format!("Error: {}", err),
@@ -36,12 +28,12 @@ type VariableOffsets = HashMap<String, usize>;
 
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
-fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: String) -> usize {
-    if let Some(idx) = strings.get(&name) {
+fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: &String) -> usize {
+    if let Some(idx) = strings.get(name) {
         idx.clone()
     } else {
         let idx = strings.len();
-        strings.insert(name, idx);
+        strings.insert(name.clone(), idx);
         idx
     }
 }
@@ -50,23 +42,22 @@ fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: String) -> usize {
 /// the variable was defined before, this offset is returned.
 // TODO: Probably prevent assigning to the same variable multiple times.
 // TODO: Variables local to subroutines.
-fn get_variable_offset<'a>(variables: &'a mut VariableOffsets, name: String) -> usize {
-    if let Some(idx) = variables.get(&name) {
+fn get_variable_offset<'a>(variables: &'a mut VariableOffsets, name: &String) -> usize {
+    if let Some(idx) = variables.get(name) {
         idx.clone()
     } else {
         let idx = variables.len();
-        variables.insert(name, idx);
+        variables.insert(name.clone(), idx);
         idx
     }
 }
 
 pub mod check {
+    use crate::checker::{get_string_idx, get_variable_offset};
     use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
-    use crate::project::project::{Program, Project, Statement, SubroutineName};
-    use crate::project::unchecked_project::{
-        UncheckedProgram, UncheckedProject, UncheckedStatement, UncheckedTopLevelStatement,
-    };
-    use std::collections::{HashSet, VecDeque};
+    use crate::project::project::*;
+    use crate::project::unchecked_project::*;
+    use std::collections::{HashMap, HashSet, VecDeque};
 
     fn unused_subs(program: &UncheckedProgram) -> HashSet<SubroutineName> {
         let subroutines = program.subroutines();
@@ -101,10 +92,56 @@ pub mod check {
             variables: &mut VariableOffsets,
             stmt: &UncheckedStatement,
         ) -> Statement {
-            unimplemented!()
+            match stmt {
+                UncheckedStatement::UPrintStr(UncheckedStringLiteral::UStringLiteral(str)) => {
+                    let idx = get_string_idx(strings, str);
+                    Statement::PrintStr(StringLiteral::StringLiteral(idx, str.clone()))
+                }
+                UncheckedStatement::UPrintVar(UncheckedVariable::UVariable(name)) => {
+                    let offset = get_variable_offset(variables, name);
+                    Statement::PrintVar(Variable::Variable(offset, name.clone()))
+                }
+                UncheckedStatement::UCall(name) => Statement::Call(name.clone()),
+                UncheckedStatement::UAssignment(UncheckedVariable::UVariable(name), value) => {
+                    let offset = get_variable_offset(variables, name);
+                    Statement::Assignment(Variable::Variable(offset, name.clone()), value.clone())
+                }
+            }
         }
 
-        unimplemented!()
+        fn check_top_lvl_stmt(
+            strings: &mut StringIndexes,
+            variables: &mut VariableOffsets,
+            top_stmt: &UncheckedTopLevelStatement,
+        ) -> TopLevelStatement {
+            match top_stmt {
+                UncheckedTopLevelStatement::USubroutine(name, stmts) => {
+                    let mut checked_stmts = Vec::new();
+                    for stmt in stmts.iter() {
+                        checked_stmts.push(check_stmt(strings, variables, &stmt));
+                    }
+                    TopLevelStatement::Subroutine(name.clone(), checked_stmts)
+                }
+                UncheckedTopLevelStatement::UStmt(stmt) => {
+                    TopLevelStatement::Stmt(check_stmt(strings, variables, &stmt))
+                }
+            }
+        }
+
+        let mut strings: StringIndexes = HashMap::new();
+        let mut variables: VariableOffsets = HashMap::new();
+
+        // Check and convert each statement one by one.
+        let mut stmts = Vec::new();
+        for stmt in program.stmts.iter() {
+            stmts.push(check_top_lvl_stmt(&mut strings, &mut variables, &stmt));
+        }
+
+        Program {
+            stmts,
+            strings,
+            variables,
+        }
     }
 
     /// Checks a project for issues.
@@ -141,10 +178,9 @@ pub mod check {
             .collect::<Vec<CheckIssue>>();
 
         if call_errors.is_empty() {
-            let checked_program = check_program(&prog);
             CheckResult::Checked(
                 Project {
-                    program: checked_program,
+                    program: check_program(&prog),
                     project_type: project.project_type,
                 },
                 sub_warnings,

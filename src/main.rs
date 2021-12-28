@@ -1,3 +1,6 @@
+use crate::checker::CheckResult;
+use crate::console::ReturnOnError;
+use crate::project::project::ProjectType;
 use std::collections::HashSet;
 use std::env;
 use std::fs::remove_file;
@@ -8,13 +11,12 @@ use std::path::Path;
 use std::process::exit;
 use std::process::Command;
 use std::str;
-use crate::console::ReturnOnError;
 
+mod checker;
 mod console;
-mod project;
 mod lexer;
 mod parser;
-mod checker;
+mod project;
 
 pub fn asm_encode_string(str: &str) -> String {
     let (_, in_str, r) = str.chars().fold(
@@ -42,35 +44,36 @@ pub fn asm_encode_string(str: &str) -> String {
     return if in_str { format!("{}\"", r) } else { r };
 }
 
-pub fn write_x86_64_linux_nasm(file_name: &str, program: String) -> console::AppResult<()> {
-    let mut file = File::create(file_name).map_err(|_| "Failed to create the file.".to_string())?;
+pub fn write_x86_64_linux_nasm(file_name: &str, program: String) {
+    let mut file = File::create(file_name)
+        .map_err(|_| "Failed to create the file.".to_string())
+        .handle_with_exit(None);
     let mut prl = |line: &str| {
         writeln!(&mut file, "{}", line)
             .map_err(|_| "Failed to write a line to the file.".to_string())
+            .handle_with_exit(None);
     };
 
-    prl("section .data")?;
-    prl(format!("    text db {}", asm_encode_string(program.as_str())).as_str())?;
-    prl("")?;
-    prl("section .text")?;
-    prl("    global _start")?;
-    prl("_start:")?;
-    prl("    mov rax, 1")?;
-    prl("    mov rdi, 1")?;
-    prl("    mov rsi, text")?;
-    prl("    mov rdx, 14")?;
-    prl("    syscall")?;
-    prl("")?;
-    prl("    mov rax, 60")?;
-    prl("    mov rdi, 0")?;
-    prl("    syscall")?;
-
-    return Ok(());
+    prl("section .data");
+    prl(format!("    text db {}", asm_encode_string(program.as_str())).as_str());
+    prl("");
+    prl("section .text");
+    prl("    global _start");
+    prl("_start:");
+    prl("    mov rax, 1");
+    prl("    mov rdi, 1");
+    prl("    mov rsi, text");
+    prl("    mov rdx, 14");
+    prl("    syscall");
+    prl("");
+    prl("    mov rax, 60");
+    prl("    mov rdi, 0");
+    prl("    syscall");
 }
 
-
 fn read_file(file_name: &str) -> console::AppResult<String> {
-    let mut file = File::open(file_name).map_err(|e| format!("Failed to open input file: {}", e))?;
+    let mut file =
+        File::open(file_name).map_err(|e| format!("Failed to open input file: {}", e))?;
     let mut buf: Vec<u8> = Vec::new();
     file.read_to_end(&mut buf)
         .map_err(|e| format!("Failed reading input file: {}", e))?;
@@ -78,8 +81,9 @@ fn read_file(file_name: &str) -> console::AppResult<String> {
         .map_err(|_| "Unable to convert utf8 bytes into string.".to_string());
 }
 
-fn compile(file_name: &str) -> console::AppResult<()> {
-    let input = read_file(format!("{}", file_name).as_str())?;
+fn compile(file_name: &str) -> String {
+    let input = read_file(format!("{}", file_name).as_str())
+        .handle_with_exit(Some("Error reading source file."));
 
     let keywords = HashSet::from(["Executable", "let", "call", "print"]);
 
@@ -90,8 +94,53 @@ fn compile(file_name: &str) -> console::AppResult<()> {
     }
 
     let project = crate::parser::parse_project(tokens);
-    println!("{:#?}", project);
+    println!("{:#?}", &project);
 
+    let ProjectType::Executable(project_name) = project.project_type.clone();
+
+    match crate::checker::check::check(project) {
+        CheckResult::Failed(issues) => {
+            println!("Issues found:\n");
+            for issue in issues.iter() {
+                eprintln!("{}", issue.to_string());
+            }
+            exit(1);
+        }
+        CheckResult::Checked(checked_project, warnings) => {
+            if !warnings.is_empty() {
+                println!("Issues found:\n");
+                for warning in warnings.iter() {
+                    eprintln!("{}", warning.to_string());
+                }
+            }
+
+            println!("{:#?}", checked_project);
+
+            // Determine file names.
+            let asm_file = format!("{}.asm", project_name);
+            let o_file = format!("{}.o", project_name);
+            let exe_file = format!("{}", project_name);
+
+            // Write nasm.
+            println!("Generating {}", asm_file);
+            write_x86_64_linux_nasm(asm_file.as_str(), "TODO: Accept program.".to_string());
+
+            // Compile nasm.
+            console::run_cmd_echoed(Vec::from([
+                "nasm",
+                "-f",
+                "elf64",
+                "-o",
+                o_file.as_str(),
+                asm_file.as_str(),
+            ]));
+
+            // Link file.
+            console::run_cmd_echoed(Vec::from(["ld", o_file.as_str(), "-o", exe_file.as_str()]));
+
+            exe_file
+        }
+    }
 
     //println!("Generating {}.asm.", project_name);
     //write_x86_64_linux_nasm(format!("{}.asm", project_name).as_str(), program)?;
@@ -111,8 +160,6 @@ fn compile(file_name: &str) -> console::AppResult<()> {
     //    "-o",
     //    format!("{}", project_name).as_str(),
     //])?;
-
-    return Ok(());
 }
 
 /// Cleans up the intermediary files created while compiling the program.
@@ -142,19 +189,26 @@ fn cleanup(project_name: &str, include_exe: bool) -> console::AppResult<()> {
     return Ok(());
 }
 
-
 fn main() {
     let args: Vec<String> = env::args().collect();
-    console::test_condition_with_usage_error(&args[0], args.len() >= 2, "Not enough arguments provided.");
+    console::test_condition_with_usage_error(
+        &args[0],
+        args.len() >= 2,
+        "Not enough arguments provided.",
+    );
 
     let cmd = &args[1];
     match cmd.as_str() {
         "build" => {
-            console::test_condition_with_usage_error(&args[0], args.len() >= 3, "Missing build target.");
+            console::test_condition_with_usage_error(
+                &args[0],
+                args.len() >= 3,
+                "Missing build target.",
+            );
             let target = &args[2];
 
             let remaining = args[3..].to_vec();
-            compile(target).handle_with_exit(Some("Error while compiling."));
+            compile(target);
 
             if remaining.contains(&"-r".to_string()) {
                 Command::new(format!("./{}", target).as_str())
@@ -165,14 +219,22 @@ fn main() {
             }
         }
         "clean" => {
-            console::test_condition_with_usage_error(&args[0], args.len() >= 3, "Missing clean target.");
+            console::test_condition_with_usage_error(
+                &args[0],
+                args.len() >= 3,
+                "Missing clean target.",
+            );
             let target = &args[2];
             let remaining = args[3..].to_vec();
             let include_exe = remaining.contains(&"-e".to_string());
             cleanup(target, include_exe).handle_with_exit(Some("Error while cleaning up."));
         }
         _ => {
-            console::test_condition_with_usage_error(&args[0], false, format!("Unknown command: '{}'.", cmd).as_str());
+            console::test_condition_with_usage_error(
+                &args[0],
+                false,
+                format!("Unknown command: '{}'.", cmd).as_str(),
+            );
         }
     }
 }

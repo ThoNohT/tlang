@@ -155,7 +155,6 @@ pub fn test_condition_with_usage_error(compiler_name: &str, condition: bool, err
 
 /// Checks a condition, and if it fails, displays the specified error and then exits with exit
 /// code 1.
-#[allow(dead_code)]
 pub fn test_condition(condition: bool, error: &str) {
     if !condition {
         e_red!(error);
@@ -165,13 +164,13 @@ pub fn test_condition(condition: bool, error: &str) {
 
 /// Runs a command, and echoes the command to sdtout.
 /// If the command fails, the output from stderr is returned and the program exits.
-#[allow(dead_code)]
-pub fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
+pub fn run_cmd_echoed(args: Vec<&str>) {
     println!("{}", args.join(" "));
     let output = Command::new(args[0])
         .args(args[1..].iter())
         .output()
-        .map_err(|e| format!("{}", e))?;
+        .map_err(|e| format!("{}", e))
+        .handle_with_exit(None);
     let code = output.status.code();
 
     if None == code {
@@ -185,7 +184,5 @@ pub fn run_cmd_echoed(args: Vec<&str>) -> AppResult<()> {
             exit(1);
         }
     }
-
-    Ok(())
 }
 

@@ -302,7 +302,10 @@ fn check_indent<'a>(state: &'a mut ParserState, indent: usize) -> bool {
 /// Tries to parse a statement. This pa rser first checks whether the next token has the correct
 /// indentation, then applies onfe of the parsers for the specific statements. Consumes no tokens
 /// if the indentation is incorrect, or no statement was parsed.
-fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<UncheckedStatement> {
+fn try_parse_statement<'a>(
+    state: &'a mut ParserState,
+    indent: usize,
+) -> Option<UncheckedStatement> {
     state.backup();
 
     if !check_indent(state, indent) {
@@ -373,7 +376,7 @@ fn parse_program<'a>(state: &'a mut ParserState) -> UncheckedProgram {
         stmt_opt = try_parse_top_level_statement(state);
     }
 
-    UncheckedProgram::UProgram(stmts)
+    UncheckedProgram { stmts }
 }
 
 /// Parses a project from a list of tokens.
