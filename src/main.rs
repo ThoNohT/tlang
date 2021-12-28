@@ -1,4 +1,7 @@
 use crate::checker::CheckResult;
+use crate::console::build_flag::BuildFlag;
+use crate::console::clean_flag::CleanFlag;
+use crate::console::compiler_flag::CompilerFlag;
 use crate::console::ReturnOnError;
 use crate::project::project::ProjectType;
 use std::collections::HashSet;
@@ -81,7 +84,7 @@ fn read_file(file_name: &str) -> console::AppResult<String> {
         .map_err(|_| "Unable to convert utf8 bytes into string.".to_string());
 }
 
-fn compile(file_name: &str) -> String {
+fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
     let input = read_file(format!("{}", file_name).as_str())
         .handle_with_exit(Some("Error reading source file."));
 
@@ -89,12 +92,19 @@ fn compile(file_name: &str) -> String {
 
     let tokens = crate::lexer::lexer::lex_file(keywords, file_name, &input);
 
-    for (i, t) in tokens.iter().enumerate() {
-        println!("{}: {}", i, t.to_string());
+    if flags.contains(&BuildFlag::DumpLexerTokens) {
+        for (i, t) in tokens.iter().enumerate() {
+            println!("{}: {}", i, t.to_string());
+        }
+        exit(0);
     }
 
     let project = crate::parser::parse_project(tokens);
-    println!("{:#?}", &project);
+
+    if flags.contains(&BuildFlag::DumpUncheckedSyntaxTree) {
+        println!("{:#?}", &project);
+        exit(0);
+    }
 
     let ProjectType::Executable(project_name) = project.project_type.clone();
 
@@ -114,7 +124,10 @@ fn compile(file_name: &str) -> String {
                 }
             }
 
-            println!("{:#?}", checked_project);
+            if flags.contains(&BuildFlag::DumpCheckedSyntaxTree) {
+                println!("{:#?}", checked_project);
+                exit(0);
+            }
 
             // Determine file names.
             let asm_file = format!("{}.asm", project_name);
@@ -141,52 +154,36 @@ fn compile(file_name: &str) -> String {
             exe_file
         }
     }
-
-    //println!("Generating {}.asm.", project_name);
-    //write_x86_64_linux_nasm(format!("{}.asm", project_name).as_str(), program)?;
-
-    //console::run_cmd_echoed(vec![
-    //    "nasm",
-    //    "-f",
-    //    "elf64",
-    //    "-o",
-    //    format!("{}.o", project_name).as_str(),
-    //    format!("{}.asm", project_name).as_str(),
-    //])?;
-
-    //console::run_cmd_echoed(vec![
-    //    "ld",
-    //    format!("{}.o", project_name).as_str(),
-    //    "-o",
-    //    format!("{}", project_name).as_str(),
-    //])?;
 }
 
 /// Cleans up the intermediary files created while compiling the program.
 /// If include_exe is true, then also the executable is cleaned up.
-fn cleanup(project_name: &str, include_exe: bool) -> console::AppResult<()> {
+fn cleanup(project_name: &str, flags: HashSet<CleanFlag>) {
     println!("Cleaning up files for {}", project_name);
 
     let asm_file = format!("{}.asm", project_name);
     if Path::new(&asm_file).exists() {
         println!("Removing {}", asm_file);
-        remove_file(asm_file).map_err(|_| "Failed to remove file.".to_string())?;
+        remove_file(asm_file)
+            .map_err(|_| "Failed to remove file.".to_string())
+            .handle_with_exit(Some("Error cleaning up asm file."));
     }
 
     let o_file = format!("{}.o", project_name);
     if Path::new(&o_file).exists() {
         println!("Removing {}", o_file);
         remove_file(format!("{}", o_file).as_str())
-            .map_err(|_| "Failed to remove file.".to_string())?;
+            .map_err(|_| "Failed to remove file.".to_string())
+            .handle_with_exit(Some("Error cleaning up out file."));
     }
 
     let exe_file = format!("{}", project_name);
-    if include_exe && Path::new(&exe_file).exists() {
+    if flags.contains(&CleanFlag::IncludeExe) && Path::new(&exe_file).exists() {
         println!("Removing {}", exe_file);
-        remove_file(exe_file).map_err(|_| "Failed to remove file.".to_string())?;
+        remove_file(exe_file)
+            .map_err(|_| "Failed to remove file.".to_string())
+            .handle_with_exit(Some("Error cleaning up executable file."));
     }
-
-    return Ok(());
 }
 
 fn main() {
@@ -207,11 +204,11 @@ fn main() {
             );
             let target = &args[2];
 
-            let remaining = args[3..].to_vec();
-            compile(target);
+            let flags: HashSet<BuildFlag> = CompilerFlag::accumulate(args[3..].iter());
+            let exe_file = compile(target, &flags);
 
-            if remaining.contains(&"-r".to_string()) {
-                Command::new(format!("./{}", target).as_str())
+            if flags.contains(&BuildFlag::Run) {
+                Command::new(format!("./{}", exe_file).as_str())
                     .spawn()
                     .map_err(|e| format!("{}", e))
                     .handle_with_exit(Some("Failed to run compiled program."));
@@ -225,9 +222,8 @@ fn main() {
                 "Missing clean target.",
             );
             let target = &args[2];
-            let remaining = args[3..].to_vec();
-            let include_exe = remaining.contains(&"-e".to_string());
-            cleanup(target, include_exe).handle_with_exit(Some("Error while cleaning up."));
+            let flags: HashSet<CleanFlag> = CompilerFlag::accumulate(args[3..].iter());
+            cleanup(target, flags);
         }
         _ => {
             console::test_condition_with_usage_error(

@@ -1,4 +1,4 @@
-mod compiler_flag {
+pub mod compiler_flag {
     use std::collections::HashMap;
     use std::collections::HashSet;
     use std::hash::Hash;
@@ -6,13 +6,13 @@ mod compiler_flag {
     /// A flag that can be used to define custom behavior for a command.
     pub trait CompilerFlag {
         /// Returns a map for all flags, indexed by the string that triggers the flag.
-        fn all_flags() -> HashMap<&'static str, Self> where Self : Sized;
+        fn all_flags() -> HashMap<String, Self> where Self : Sized;
 
         /// Returns as tring explaining the specified flag.
         fn explain(flag: &Self) -> &str;
 
         /// Converts a string into a flag, if it is specified in all_flags.
-        fn from_string(flag: &str) -> Option<Self>
+        fn from_string(flag: &String) -> Option<Self>
             where Self: CompilerFlag, Self: Clone
         {
             let map = Self::all_flags();
@@ -21,7 +21,7 @@ mod compiler_flag {
 
         /// Converts an iterator of strings into a set containing all valid flags specified in this iterator.
         fn accumulate<'a, I>(args: I) -> HashSet<Self>
-            where I: Iterator<Item = &'a str>, Self: CompilerFlag, Self: Clone, Self: Eq, Self: Hash
+            where I: Iterator<Item = &'a String>, Self: CompilerFlag, Self: Clone, Self: Eq, Self: Hash
         {
             HashSet::from_iter(args.filter_map(Self::from_string))
         }
@@ -37,7 +37,7 @@ mod compiler_flag {
     }
 }
 
-mod build_flag {
+pub mod build_flag {
     use std::collections::HashMap;
     use crate::console::compiler_flag::CompilerFlag;
 
@@ -50,12 +50,12 @@ mod build_flag {
     }
 
     impl CompilerFlag for BuildFlag {
-        fn all_flags() -> HashMap<&'static str, BuildFlag> {
+        fn all_flags() -> HashMap<String, BuildFlag> {
             HashMap::from([
-                ("-r", BuildFlag::Run),
-                ("-dt", BuildFlag::DumpLexerTokens),
-                ("-dtu", BuildFlag::DumpUncheckedSyntaxTree),
-                ("-dtc", BuildFlag::DumpCheckedSyntaxTree),
+                ("-r".to_string(), BuildFlag::Run),
+                ("-dt".to_string(), BuildFlag::DumpLexerTokens),
+                ("-dtu".to_string(), BuildFlag::DumpUncheckedSyntaxTree),
+                ("-dtc".to_string(), BuildFlag::DumpCheckedSyntaxTree),
             ])
         }
 
@@ -70,7 +70,7 @@ mod build_flag {
     }
 }
 
-mod clean_flag {
+pub mod clean_flag {
     use std::collections::HashMap;
     use crate::console::compiler_flag::CompilerFlag;
 
@@ -80,9 +80,9 @@ mod clean_flag {
     }
 
     impl CompilerFlag for CleanFlag {
-        fn all_flags() -> HashMap<&'static str, CleanFlag> {
+        fn all_flags() -> HashMap<String, CleanFlag> {
             HashMap::from([
-                ("-e", CleanFlag::IncludeExe),
+                ("-e".to_string(), CleanFlag::IncludeExe),
             ])
         }
 
