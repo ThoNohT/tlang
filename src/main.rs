@@ -92,7 +92,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
     let tokens = crate::lexer::lexer::lex_file(keywords, file_name, &input);
 
-    if flags.contains(&BuildFlag::DumpLexerTokens) {
+    if BuildFlag::DumpLexerTokens.active(flags) {
         for (i, t) in tokens.iter().enumerate() {
             println!("{}: {}", i, t.to_string());
         }
@@ -101,7 +101,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
     let project = crate::parser::parse_project(tokens);
 
-    if flags.contains(&BuildFlag::DumpUncheckedSyntaxTree) {
+    if BuildFlag::DumpUncheckedSyntaxTree.active(flags) {
         println!("{:#?}", &project);
         exit(0);
     }
@@ -124,7 +124,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
                 }
             }
 
-            if flags.contains(&BuildFlag::DumpCheckedSyntaxTree) {
+            if BuildFlag::DumpCheckedSyntaxTree.active(flags) {
                 println!("{:#?}", checked_project);
                 exit(0);
             }
@@ -158,7 +158,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
 /// Cleans up the intermediary files created while compiling the program.
 /// If include_exe is true, then also the executable is cleaned up.
-fn cleanup(project_name: &str, flags: HashSet<CleanFlag>) {
+fn cleanup(project_name: &str, flags: &HashSet<CleanFlag>) {
     println!("Cleaning up files for {}", project_name);
 
     let asm_file = format!("{}.asm", project_name);
@@ -178,7 +178,7 @@ fn cleanup(project_name: &str, flags: HashSet<CleanFlag>) {
     }
 
     let exe_file = format!("{}", project_name);
-    if flags.contains(&CleanFlag::IncludeExe) && Path::new(&exe_file).exists() {
+    if CleanFlag::IncludeExe.active(flags) && Path::new(&exe_file).exists() {
         println!("Removing {}", exe_file);
         remove_file(exe_file)
             .map_err(|_| "Failed to remove file.".to_string())
@@ -207,7 +207,7 @@ fn main() {
             let flags: HashSet<BuildFlag> = CompilerFlag::accumulate(args[3..].iter());
             let exe_file = compile(target, &flags);
 
-            if flags.contains(&BuildFlag::Run) {
+            if BuildFlag::Run.active(&flags) {
                 Command::new(format!("./{}", exe_file).as_str())
                     .spawn()
                     .map_err(|e| format!("{}", e))
@@ -223,7 +223,7 @@ fn main() {
             );
             let target = &args[2];
             let flags: HashSet<CleanFlag> = CompilerFlag::accumulate(args[3..].iter());
-            cleanup(target, flags);
+            cleanup(target, &flags);
         }
         _ => {
             console::test_condition_with_usage_error(

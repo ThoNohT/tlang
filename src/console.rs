@@ -4,32 +4,34 @@ pub mod compiler_flag {
     use std::hash::Hash;
 
     /// A flag that can be used to define custom behavior for a command.
-    pub trait CompilerFlag {
+    pub trait CompilerFlag: Sized + Hash + Eq + Clone {
         /// Returns a map for all flags, indexed by the string that triggers the flag.
-        fn all_flags() -> HashMap<String, Self> where Self : Sized;
+        fn all_flags() -> HashMap<String, Self>;
 
         /// Returns as tring explaining the specified flag.
         fn explain(flag: &Self) -> &str;
 
+        /// Checks whether the trait is active in the provided set of traits.
+        fn active(self: &Self, flags: &HashSet<Self>) -> bool {
+            flags.contains(self)
+        }
+
         /// Converts a string into a flag, if it is specified in all_flags.
-        fn from_string(flag: &String) -> Option<Self>
-            where Self: CompilerFlag, Self: Clone
-        {
+        fn from_string(flag: &String) -> Option<Self> {
             let map = Self::all_flags();
             map.get(flag).cloned()
         }
 
         /// Converts an iterator of strings into a set containing all valid flags specified in this iterator.
         fn accumulate<'a, I>(args: I) -> HashSet<Self>
-            where I: Iterator<Item = &'a String>, Self: CompilerFlag, Self: Clone, Self: Eq, Self: Hash
+        where
+            I: Iterator<Item = &'a String>,
         {
             HashSet::from_iter(args.filter_map(Self::from_string))
         }
 
         /// Prints all flags of the specified type, including their explanation.
-        fn print_flags()
-            where Self : Sized
-        {
+        fn print_flags() {
             for (key, val) in Self::all_flags().iter() {
                 println!("        {:<14} {}", key, Self::explain(val));
             }
@@ -38,15 +40,15 @@ pub mod compiler_flag {
 }
 
 pub mod build_flag {
-    use std::collections::HashMap;
     use crate::console::compiler_flag::CompilerFlag;
+    use std::collections::HashMap;
 
     #[derive(PartialEq, Eq, Clone, Hash)]
     pub enum BuildFlag {
         Run,
         DumpLexerTokens,
         DumpUncheckedSyntaxTree,
-        DumpCheckedSyntaxTree
+        DumpCheckedSyntaxTree,
     }
 
     impl CompilerFlag for BuildFlag {
@@ -63,16 +65,20 @@ pub mod build_flag {
             match flag {
                 BuildFlag::Run => "Run the program after compiling it.",
                 BuildFlag::DumpLexerTokens => "Dump the tokens produced by the lexer and exit.",
-                BuildFlag::DumpUncheckedSyntaxTree => "Dump the unchecked syntax tree produced by the parser and exit.",
-                BuildFlag::DumpCheckedSyntaxTree => "Dump the checked syntax tree produced by the checker and exit.",
+                BuildFlag::DumpUncheckedSyntaxTree => {
+                    "Dump the unchecked syntax tree produced by the parser and exit."
+                }
+                BuildFlag::DumpCheckedSyntaxTree => {
+                    "Dump the checked syntax tree produced by the checker and exit."
+                }
             }
         }
     }
 }
 
 pub mod clean_flag {
-    use std::collections::HashMap;
     use crate::console::compiler_flag::CompilerFlag;
+    use std::collections::HashMap;
 
     #[derive(PartialEq, Eq, Clone, Hash)]
     pub enum CleanFlag {
@@ -81,9 +87,7 @@ pub mod clean_flag {
 
     impl CompilerFlag for CleanFlag {
         fn all_flags() -> HashMap<String, CleanFlag> {
-            HashMap::from([
-                ("-e".to_string(), CleanFlag::IncludeExe),
-            ])
+            HashMap::from([("-e".to_string(), CleanFlag::IncludeExe)])
         }
 
         fn explain(flag: &CleanFlag) -> &str {
@@ -103,16 +107,17 @@ pub trait ReturnOnError<T, E> {
     fn handle_with_exit(self, additional_msg: Option<&str>) -> T;
 }
 
+use crate::console::compiler_flag::CompilerFlag;
 use colour::e_red;
 use std::fmt;
 use std::process::exit;
 use std::process::Command;
 use std::str;
-use crate::console::compiler_flag::CompilerFlag;
 
 /// Implementation of ReturnOnError for a Result with a displayable error.
 impl<T, E> ReturnOnError<T, E> for Result<T, E>
-where E: fmt::Display,
+where
+    E: fmt::Display,
 {
     fn handle_with_exit(self, additional_msg: Option<&str>) -> T {
         match self {
@@ -123,13 +128,10 @@ where E: fmt::Display,
                 e_red!("{}\n", e);
                 exit(1);
             }
-            Ok(res) => {
-                res
-            }
+            Ok(res) => res,
         }
     }
 }
-
 
 /// Prints the usage string.
 pub fn print_usage(compiler_name: &str) {
@@ -175,14 +177,19 @@ pub fn run_cmd_echoed(args: Vec<&str>) {
 
     if None == code {
         e_red!("Command was terminated by a signal.\n");
-        e_red!("{}\n", str::from_utf8(&output.stderr).handle_with_exit(None));
+        e_red!(
+            "{}\n",
+            str::from_utf8(&output.stderr).handle_with_exit(None)
+        );
         exit(1);
     } else if let Some(c) = code {
         if c != 0 {
             e_red!("Command exited with status {}.\n", c);
-            e_red!("{}\n", str::from_utf8(&output.stderr).handle_with_exit(None));
+            e_red!(
+                "{}\n",
+                str::from_utf8(&output.stderr).handle_with_exit(None)
+            );
             exit(1);
         }
     }
 }
-
