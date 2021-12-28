@@ -32,6 +32,7 @@ fn read_file(file_name: &str) -> console::AppResult<String> {
         .map_err(|_| "Unable to convert utf8 bytes into string.".to_string());
 }
 
+/// Compiles the project in the specified file.
 fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
     let input = read_file(format!("{}", file_name).as_str())
         .handle_with_exit(Some("Error reading source file."));
@@ -105,8 +106,15 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 }
 
 /// Cleans up the intermediary files created while compiling the program.
-/// If include_exe is true, then also the executable is cleaned up.
-fn cleanup(project_name: &str, flags: &HashSet<CleanFlag>) {
+fn cleanup(file_name: &str, flags: &HashSet<CleanFlag>) {
+    let input = read_file(format!("{}", file_name).as_str())
+        .handle_with_exit(Some("Error reading source file."));
+    let keywords = HashSet::from(["Executable", "let", "call", "print"]);
+    let tokens = crate::lexer::lexer::lex_file(keywords, file_name, &input);
+    let project = crate::parser::parse_project(tokens);
+
+    let ProjectType::Executable(project_name) = project.project_type;
+
     println!("Cleaning up files for {}", project_name);
 
     let asm_file = format!("{}.asm", project_name);
