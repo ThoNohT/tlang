@@ -118,9 +118,9 @@ where E: fmt::Display,
         match self {
             Err(e) => {
                 if let Some(msg) = additional_msg {
-                    e_red!(msg);
+                    e_red!("{}\n", msg);
                 }
-                e_red!("{}", e);
+                e_red!("{}\n", e);
                 exit(1);
             }
             Ok(res) => {
@@ -148,7 +148,7 @@ pub fn print_usage(compiler_name: &str) {
 pub fn test_condition_with_usage_error(compiler_name: &str, condition: bool, error: &str) {
     if !condition {
         print_usage(compiler_name);
-        e_red!(error);
+        e_red!("{}\n", error);
         exit(1);
     }
 }
@@ -157,7 +157,7 @@ pub fn test_condition_with_usage_error(compiler_name: &str, condition: bool, err
 /// code 1.
 pub fn test_condition(condition: bool, error: &str) {
     if !condition {
-        e_red!(error);
+        e_red!("{}\n", error);
         exit(1);
     }
 }
@@ -174,13 +174,13 @@ pub fn run_cmd_echoed(args: Vec<&str>) {
     let code = output.status.code();
 
     if None == code {
-        e_red!("Command was terminated by a signal.");
-        e_red!("{}", str::from_utf8(&output.stderr).handle_with_exit(None));
+        e_red!("Command was terminated by a signal.\n");
+        e_red!("{}\n", str::from_utf8(&output.stderr).handle_with_exit(None));
         exit(1);
     } else if let Some(c) = code {
         if c != 0 {
-            e_red!("Command exited with status {}.", c);
-            e_red!("{}", str::from_utf8(&output.stderr).handle_with_exit(None));
+            e_red!("Command exited with status {}.\n", c);
+            e_red!("{}\n", str::from_utf8(&output.stderr).handle_with_exit(None));
             exit(1);
         }
     }
