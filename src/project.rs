@@ -66,7 +66,7 @@ pub mod project {
     }
 
     /// The functional part of a project.
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct Program {
         pub stmts: Vec<TopLevelStatement>,
         pub strings: HashMap<String, usize>,
@@ -98,7 +98,7 @@ pub mod project {
     }
 
     /// A complete project, parsed and checked from a file.
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct Project {
         pub project_type: ProjectType,
         pub program: Program,

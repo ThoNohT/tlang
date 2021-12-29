@@ -1,6 +1,6 @@
-use crate::project::project::Project;
 use std::collections::HashMap;
 
+#[derive(Clone, Debug)]
 pub enum CheckIssue {
     /// An error that prevetns compilation.
     CheckError(String),
@@ -18,9 +18,52 @@ impl CheckIssue {
     }
 }
 
-pub enum CheckResult {
-    Checked(Project, Vec<CheckIssue>),
+#[derive(Clone)]
+pub enum CheckResult<T>
+where
+    T: Clone,
+{
+    Checked(T, Vec<CheckIssue>),
     Failed(Vec<CheckIssue>),
+}
+
+impl<T: Clone> CheckResult<T> {
+    /// Checks whether a check result is failed.
+    pub fn is_failed(self: &Self) -> bool {
+        match self {
+            Self::Failed(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns all issues in a check result.
+    pub fn issues(self: &Self) -> Vec<CheckIssue> {
+        match self {
+            Self::Failed(issues) => issues.clone(),
+            Self::Checked(_, issues) => issues.clone(),
+        }
+    }
+
+    /// Returns the resulting value from a check result, if it is Checked, and None otherwise.
+    pub fn value(self: &Self) -> Option<T> {
+        match self {
+            Self::Failed(_) => None,
+            Self::Checked(v, _) => Some(v.clone()),
+        }
+    }
+
+    /// creates a CheckResult that is Checked, and has no issues.
+    pub fn perfect(value: T) -> Self {
+        Self::Checked(value, Vec::new())
+    }
+
+    /// Applies a mapping function to the result of a CheckResult, if it is Checked.
+    pub fn map<R: Clone>(self: &Self, f: impl Fn(T) -> R) -> CheckResult<R> {
+        match self {
+            Self::Failed(issues) => CheckResult::Failed(issues.clone()),
+            Self::Checked(v, issues) => CheckResult::Checked(f(v.clone()), issues.clone()),
+        }
+    }
 }
 
 type StringIndexes = HashMap<String, usize>;
@@ -40,15 +83,25 @@ fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: &String) -> usize {
 
 /// Returns the offset for the specified variable name and the updated set of variable offsets. If
 /// the variable was defined before, this offset is returned.
+/// If `assign` is false, then a reference to a non-existent string will fail the compilation.
 // TODO: Probably prevent assigning to the same variable multiple times.
 // TODO: Variables local to subroutines.
-fn get_variable_offset<'a>(variables: &'a mut VariableOffsets, name: &String) -> usize {
+fn get_variable_offset<'a>(
+    variables: &'a mut VariableOffsets,
+    assign: bool,
+    name: &String,
+) -> CheckResult<usize> {
     if let Some(idx) = variables.get(name) {
-        idx.clone()
-    } else {
+        CheckResult::Checked(idx.clone(), Vec::new())
+    } else if assign {
         let idx = variables.len();
         variables.insert(name.clone(), idx);
-        idx
+        CheckResult::Checked(idx, Vec::new())
+    } else {
+        CheckResult::Failed(Vec::from([CheckIssue::CheckError(format!(
+            "Variable {} not defined.",
+            name
+        ))]))
     }
 }
 
@@ -86,25 +139,35 @@ pub mod check {
         unused
     }
 
-    fn check_program(program: &UncheckedProgram) -> Program {
+    fn check_program(program: &UncheckedProgram) -> CheckResult<Program> {
         fn check_stmt(
             strings: &mut StringIndexes,
             variables: &mut VariableOffsets,
             stmt: &UncheckedStatement,
-        ) -> Statement {
+        ) -> CheckResult<Statement> {
             match stmt {
                 UncheckedStatement::UPrintStr(UncheckedStringLiteral::UStringLiteral(str)) => {
                     let idx = get_string_idx(strings, str);
-                    Statement::PrintStr(StringLiteral::StringLiteral(idx, str.clone()))
+                    CheckResult::perfect(Statement::PrintStr(StringLiteral::StringLiteral(
+                        idx,
+                        str.clone(),
+                    )))
                 }
                 UncheckedStatement::UPrintVar(UncheckedVariable::UVariable(name)) => {
-                    let offset = get_variable_offset(variables, name);
-                    Statement::PrintVar(Variable::Variable(offset, name.clone()))
+                    get_variable_offset(variables, false, name)
+                        .map(|offset| Statement::PrintVar(Variable::Variable(offset, name.clone())))
                 }
-                UncheckedStatement::UCall(name) => Statement::Call(name.clone()),
+                UncheckedStatement::UCall(name) => {
+                    CheckResult::perfect(Statement::Call(name.clone()))
+                }
+
                 UncheckedStatement::UAssignment(UncheckedVariable::UVariable(name), value) => {
-                    let offset = get_variable_offset(variables, name);
-                    Statement::Assignment(Variable::Variable(offset, name.clone()), value.clone())
+                    get_variable_offset(variables, true, name).map(|offset| {
+                        Statement::Assignment(
+                            Variable::Variable(offset, name.clone()),
+                            value.clone(),
+                        )
+                    })
                 }
             }
         }
@@ -113,17 +176,32 @@ pub mod check {
             strings: &mut StringIndexes,
             variables: &mut VariableOffsets,
             top_stmt: &UncheckedTopLevelStatement,
-        ) -> TopLevelStatement {
+        ) -> CheckResult<TopLevelStatement> {
             match top_stmt {
                 UncheckedTopLevelStatement::USubroutine(name, stmts) => {
                     let mut checked_stmts = Vec::new();
                     for stmt in stmts.iter() {
                         checked_stmts.push(check_stmt(strings, variables, &stmt));
                     }
-                    TopLevelStatement::Subroutine(name.clone(), checked_stmts)
+
+                    let issues = checked_stmts.iter().flat_map(CheckResult::issues).collect();
+                    let failed = checked_stmts.iter().map(CheckResult::is_failed).all(|x| x);
+
+                    if !failed {
+                        let new_stmts = checked_stmts
+                            .iter()
+                            .filter_map(CheckResult::value)
+                            .collect();
+                        CheckResult::Checked(
+                            TopLevelStatement::Subroutine(name.clone(), new_stmts),
+                            issues,
+                        )
+                    } else {
+                        CheckResult::Failed(issues)
+                    }
                 }
                 UncheckedTopLevelStatement::UStmt(stmt) => {
-                    TopLevelStatement::Stmt(check_stmt(strings, variables, &stmt))
+                    check_stmt(strings, variables, &stmt).map(|s| TopLevelStatement::Stmt(s))
                 }
             }
         }
@@ -137,15 +215,25 @@ pub mod check {
             stmts.push(check_top_lvl_stmt(&mut strings, &mut variables, &stmt));
         }
 
-        Program {
-            stmts,
-            strings,
-            variables,
+        let issues = stmts.iter().flat_map(CheckResult::issues).collect();
+        let failed = stmts.iter().map(CheckResult::is_failed).any(|x| x);
+        if !failed {
+            let new_stmts = stmts.iter().filter_map(CheckResult::value).collect();
+            CheckResult::Checked(
+                Program {
+                    stmts: new_stmts,
+                    strings,
+                    variables,
+                },
+                issues,
+            )
+        } else {
+            CheckResult::Failed(issues)
         }
     }
 
     /// Checks a project for issues.
-    pub fn check(project: UncheckedProject) -> CheckResult {
+    pub fn check(project: UncheckedProject) -> CheckResult<Project> {
         let prog = project.program;
 
         let call_names = prog
@@ -157,7 +245,7 @@ pub mod check {
             .subroutines()
             .iter()
             .filter_map(UncheckedTopLevelStatement::name)
-            .collect::<HashSet<SubroutineName>>();
+            .collect();
 
         let undefined_calls = call_names
             .difference(&sub_names)
@@ -177,17 +265,26 @@ pub mod check {
             })
             .collect::<Vec<CheckIssue>>();
 
-        if call_errors.is_empty() {
-            CheckResult::Checked(
-                Project {
-                    program: check_program(&prog),
-                    project_type: project.project_type,
-                },
-                sub_warnings,
-            )
-        } else {
-            sub_warnings.append(&mut call_errors);
-            CheckResult::Failed(sub_warnings)
+        let checked_program = check_program(&prog);
+
+        match (call_errors.is_empty(), &checked_program) {
+            (true, CheckResult::Checked(prog, issues)) => {
+                let mut issues = issues.clone();
+                sub_warnings.append(&mut issues);
+                CheckResult::Checked(
+                    Project {
+                        program: prog.clone(),
+                        project_type: project.project_type,
+                    },
+                    sub_warnings,
+                )
+            }
+            _ => {
+                let mut issues = checked_program.issues();
+                sub_warnings.append(&mut call_errors);
+                sub_warnings.append(&mut issues);
+                CheckResult::Failed(sub_warnings)
+            }
         }
     }
 }
