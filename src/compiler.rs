@@ -5,51 +5,52 @@ use std::io::Write;
 use std::str;
 
 /// Writes code to print an int64 to stdout. This code is generated from some c code.
-fn write_print_int_64(wl: &mut dyn FnMut(&str)) {
-    wl("_PrintInt64:");
-    wl("    sub rsp, 56");
-    wl("    mov rcx, rdi");
-    wl("    mov r10, rdi");
-    wl("    mov r8d, 1");
-    wl("    mov BYTE [rsp+32], 10");
-    wl("    neg rcx");
-    wl("    lea r9, [rsp+32]");
-    wl("    cmovs rcx, rdi");
-    wl("    mov rdi, -3689348814741910323");
-    wl(".L2:");
-    wl("    mov rax, rcx");
-    wl("    mov rsi, r9");
-    wl("    mul rdi");
-    wl("    sub rsi, r8");
-    wl("    shr rdx, 3");
-    wl("    lea rax, [rdx+rdx*4]");
-    wl("    add rax, rax");
-    wl("    sub rcx, rax");
-    wl("    mov rax, r8");
-    wl("    add r8, 1");
-    wl("    add ecx, 48");
-    wl("    mov BYTE [rsi], cl");
-    wl("    mov rcx, rdx");
-    wl("    test rdx, rdx");
-    wl("    jne .L2");
-    wl("    test r10, r10");
-    wl("    jns .L3");
-    wl("    mov edx, 32");
-    wl("    sub rdx, r8");
-    wl("    lea r8, [rax+2]");
-    wl("    mov BYTE [rsp+rdx], 45");
-    wl(".L3:");
-    wl("    mov eax, 33");
-    wl("    mov rdx, r8");
-    wl("    mov edi, 1");
-    wl("    sub rax, r8");
-    wl("    lea rsi, [rsp+rax]");
-    wl("    mov rax, 1");
-    wl("    syscall");
-    wl("    add rsp, 56");
-    wl("    ret");
+fn write_print_int_64(wl: &mut dyn FnMut(u8, &str)) {
+    wl(0, "_PrintInt64:");
+    wl(1, "sub rsp, 56");
+    wl(1, "mov rcx, rdi");
+    wl(1, "mov r10, rdi");
+    wl(1, "mov r8d, 1");
+    wl(1, "mov BYTE [rsp+32], 10");
+    wl(1, "neg rcx");
+    wl(1, "lea r9, [rsp+32]");
+    wl(1, "cmovs rcx, rdi");
+    wl(1, "mov rdi, -3689348814741910323");
+    wl(0, ".L2:");
+    wl(1, "mov rax, rcx");
+    wl(1, "mov rsi, r9");
+    wl(1, "mul rdi");
+    wl(1, "sub rsi, r8");
+    wl(1, "shr rdx, 3");
+    wl(1, "lea rax, [rdx+rdx*4]");
+    wl(1, "add rax, rax");
+    wl(1, "sub rcx, rax");
+    wl(1, "mov rax, r8");
+    wl(1, "add r8, 1");
+    wl(1, "add ecx, 48");
+    wl(1, "mov BYTE [rsi], cl");
+    wl(1, "mov rcx, rdx");
+    wl(1, "test rdx, rdx");
+    wl(1, "jne .L2");
+    wl(1, "test r10, r10");
+    wl(1, "jns .L3");
+    wl(1, "mov edx, 32");
+    wl(1, "sub rdx, r8");
+    wl(1, "lea r8, [rax+2]");
+    wl(1, "mov BYTE [rsp+rdx], 45");
+    wl(0, ".L3:");
+    wl(1, "mov eax, 33");
+    wl(1, "mov rdx, r8");
+    wl(1, "mov edi, 1");
+    wl(1, "sub rax, r8");
+    wl(1, "lea rsi, [rsp+rax]");
+    wl(1, "mov rax, 1");
+    wl(1, "syscall");
+    wl(1, "add rsp, 56");
+    wl(1, "ret");
 }
 
+/// Creates a string that is compatible with assembly.
 fn asm_encode_string(str: &str) -> String {
     let (_, in_str, r) = str.chars().fold(
         (true, false, String::new()),
@@ -76,51 +77,49 @@ fn asm_encode_string(str: &str) -> String {
     return if in_str { format!("{}\"", r) } else { r };
 }
 
-// TODO: Make wl that accepts &str and String, using Into<String>?
 // TODO: Customize Rust code formatter?
-// TODO: Make wl accept indentation parameter?
-
-fn write_statement(wl: &mut dyn FnMut(&str), stmt: &Statement) {
+/// Writes a statement, given a writing function.
+fn write_statement(wl: &mut dyn FnMut(u8, &str), stmt: &Statement) {
     match stmt {
         Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
-            wl(format!("    ; PrintStr {}", asm_encode_string(str)).as_str());
-            wl(format!("    mov rsi, txt_{}", idx).as_str());
-            wl(format!("    mov rdx, {}", str.len()).as_str());
-            wl("    call _PrintStr");
+            wl(1, format!("; PrintStr {}", asm_encode_string(str)).as_str());
+            wl(1, format!("mov rsi, txt_{}", idx).as_str());
+            wl(1, format!("mov rdx, {}", str.len()).as_str());
+            wl(1, "call _PrintStr");
         }
         Statement::PrintVar(_, Variable::Variable(_, offset, name)) => {
-            wl(format!("    ; PrintVar {}", name).as_str());
-            wl("    mov rax, mem");
-            wl(format!("    add rax, {}", offset * 8).as_str());
-            wl("    mov rdi, [rax]");
-            wl("    call _PrintInt64");
+            wl(1, format!("; PrintVar {}", name).as_str());
+            wl(1, "mov rax, mem");
+            wl(1, format!("add rax, {}", offset * 8).as_str());
+            wl(1, "mov rdi, [rax]");
+            wl(1, "call _PrintInt64");
         }
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
-            wl(format!("    call__{}", name).as_str());
+            wl(1, format!("call__{}", name).as_str());
         }
         Statement::Assignment(_, Variable::Variable(_, offset, name), int_val) => {
-            wl(format!("    ; Assignment {}, {}", name, int_val).as_str());
-            wl("    mov rax, mem");
-            wl(format!("    mov rbx, {}", int_val).as_str());
-            wl(format!("    add rax, {}", offset * 8).as_str());
-            wl("    mov [rax], rbx");
+            wl(1, format!("; Assignment {}, {}", name, int_val).as_str());
+            wl(1, "mov rax, mem");
+            wl(1, format!("mov rbx, {}", int_val).as_str());
+            wl(1, format!("add rax, {}", offset * 8).as_str());
+            wl(1, "mov [rax], rbx");
         }
     }
-    wl("");
+    wl(0, "");
 }
 
 /// Writes a subroutine, given a writing function.
 /// These are handled in a separate function, since they need to be after all
 /// regular  statements.
-fn write_subroutine(wl: &mut dyn FnMut(&str), sub: &TopLevelStatement) {
+fn write_subroutine(wl: &mut dyn FnMut(u8, &str), sub: &TopLevelStatement) {
     match sub {
         TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {
-            wl(format!("__{}", name).as_str());
+            wl(0, format!("__{}", name).as_str());
             for stmt in stmts.iter() {
                 write_statement(wl, stmt);
             }
-            wl("    ret");
-            wl("");
+            wl(1, "ret");
+            wl(0, "");
         }
         _ => {}
     }
@@ -132,61 +131,61 @@ pub fn write_x86_64_linux_nasm(file_name: &str, program: Program) {
         .map_err(|_| "Failed to create the file.".to_string())
         .handle_with_exit(None);
 
-    let mut wl = |line: &str| {
-        writeln!(&mut file, "{}", line)
+    let mut wl = |indent: u8, line: &str| {
+        let indent_str = (0..indent * 4).map(|_| " ").collect::<String>();
+        writeln!(&mut file, "{}{}", indent_str, line)
             .map_err(|_| "Failed to write a line to the file.".to_string())
             .handle_with_exit(None);
     };
 
     // Start of program.
-    wl("Section .text");
-    wl("    global _start");
-    wl("");
-    wl("_start:");
-    wl("    ; Entry point.");
-    wl("");
+    wl(0, "Section .text");
+    wl(1, "global _start");
+    wl(0, "");
+    wl(0, "_start:");
+    wl(1, "; Entry point.");
+    wl(0, "");
 
     //Program statements.
     for stmt in program.statements().iter() {
         write_statement(&mut wl, stmt);
-        wl("");
     }
 
-    wl("    ; Exit call.");
-    wl("    mov rax, 60");
-    wl("    mov rdi, 0");
-    wl("    syscall");
-    wl("");
+    wl(1, "; Exit call.");
+    wl(1, "mov rax, 60");
+    wl(1, "mov rdi, 0");
+    wl(1, "syscall");
+    wl(0, "");
 
-    wl("_PrintStr:");
-    wl("    ; PrintStr helper. Assumes rsi and rdx have been set before calling.");
-    wl("    mov rax, 1");
-    wl("    mov rdi, 1");
+    wl(0, "_PrintStr:");
+    wl(1, "; PrintStr helper. Assumes rsi and rdx have been set before calling.");
+    wl(1, "mov rax, 1");
+    wl(1, "mov rdi, 1");
 
-    wl("    syscall");
-    wl("    ret");
+    wl(1, "syscall");
+    wl(1, "ret");
 
     write_print_int_64(&mut wl);
-    wl("");
+    wl(0, "");
 
-    wl("    ; Subroutines.");
-    wl("");
+    wl(1, "; Subroutines.");
+    wl(0, "");
 
     for sr in program.subroutines().iter() {
         write_subroutine(&mut wl, sr);
     }
 
     // Start of data section.
-    wl("section .data");
+    wl(0, "section .data");
 
     for (str, idx) in program.strings.iter() {
-        wl(format!("txt_{} db {}", idx, asm_encode_string(str)).as_str());
+        wl(1, format!("txt_{} db {}", idx, asm_encode_string(str)).as_str());
     }
-    wl("");
+    wl(0, "");
 
     // Start of memory section.
-    wl("segment .bss");
+    wl(0, "segment .bss");
     if !program.variables.is_empty() {
-        wl(format!("mem: resb {}", program.variables.len() * 8).as_str());
+        wl(1, format!("mem: resb {}", program.variables.len() * 8).as_str());
     }
 }
