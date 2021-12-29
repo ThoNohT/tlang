@@ -80,25 +80,20 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
             // Determine file names.
             let asm_file = format!("{}.asm", project_name);
-            let o_file = format!("{}.o", project_name);
             let exe_file = format!("{}", project_name);
 
-            // Write nasm.
+            // Write fasm.
             println!("Generating {}", asm_file);
-            crate::compiler::write_x86_64_linux_nasm(asm_file.as_str(), checked_project.program);
+            crate::compiler::write_x86_64_linux_fasm(asm_file.as_str(), checked_project.program);
 
-            // Compile nasm.
+            // Compile fasm.
             console::run_cmd_echoed(Vec::from([
-                "nasm",
-                "-f",
-                "elf64",
-                "-o",
-                o_file.as_str(),
+                "fasm",
+                "-m",
+                "524288",
                 asm_file.as_str(),
+                exe_file.as_str(),
             ]));
-
-            // Link file.
-            console::run_cmd_echoed(Vec::from(["ld", o_file.as_str(), "-o", exe_file.as_str()]));
 
             exe_file
         }
@@ -123,14 +118,6 @@ fn cleanup(file_name: &str, flags: &HashSet<CleanFlag>) {
         remove_file(asm_file)
             .map_err(|_| "Failed to remove file.".to_string())
             .handle_with_exit(Some("Error cleaning up asm file."));
-    }
-
-    let o_file = format!("{}.o", project_name);
-    if Path::new(&o_file).exists() {
-        println!("Removing {}", o_file);
-        remove_file(format!("{}", o_file).as_str())
-            .map_err(|_| "Failed to remove file.".to_string())
-            .handle_with_exit(Some("Error cleaning up out file."));
     }
 
     let exe_file = format!("{}", project_name);

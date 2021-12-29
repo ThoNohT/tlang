@@ -125,8 +125,8 @@ fn write_subroutine(wl: &mut dyn FnMut(u8, &str), sub: &TopLevelStatement) {
     }
 }
 
-/// Writes the p roject to x86_64 linux assembly for Nasm.
-pub fn write_x86_64_linux_nasm(file_name: &str, program: Program) {
+/// Writes the p roject to x86_64 linux assembly for fasm.
+pub fn write_x86_64_linux_fasm(file_name: &str, program: Program) {
     let mut file = File::create(file_name)
         .map_err(|_| "Failed to create the file.".to_string())
         .handle_with_exit(None);
@@ -139,8 +139,9 @@ pub fn write_x86_64_linux_nasm(file_name: &str, program: Program) {
     };
 
     // Start of program.
-    wl(0, "Section .text");
-    wl(1, "global _start");
+    wl(0, "format ELF64 executable");
+    wl(0, "segment readable executable");
+    wl(0, "entry _start");
     wl(0, "");
     wl(0, "_start:");
     wl(1, "; Entry point.");
@@ -161,7 +162,6 @@ pub fn write_x86_64_linux_nasm(file_name: &str, program: Program) {
     wl(1, "; PrintStr helper. Assumes rsi and rdx have been set before calling.");
     wl(1, "mov rax, 1");
     wl(1, "mov rdi, 1");
-
     wl(1, "syscall");
     wl(1, "ret");
 
@@ -176,16 +176,15 @@ pub fn write_x86_64_linux_nasm(file_name: &str, program: Program) {
     }
 
     // Start of data section.
-    wl(0, "section .data");
+    wl(0, "segment readable writable");
 
     for (str, idx) in program.strings.iter() {
-        wl(1, format!("txt_{} db {}", idx, asm_encode_string(str)).as_str());
+        wl(1, format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str());
     }
     wl(0, "");
 
     // Start of memory section.
-    wl(0, "segment .bss");
     if !program.variables.is_empty() {
-        wl(1, format!("mem: resb {}", program.variables.len() * 8).as_str());
+        wl(1, format!("mem: rb {}", program.variables.len() * 8).as_str());
     }
 }
