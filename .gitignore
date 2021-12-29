@@ -3,5 +3,6 @@
 # Ignore files without extensions, by ignoring all except files with extensions.
 *
 !*.*
+!src/
 *.asm
 
