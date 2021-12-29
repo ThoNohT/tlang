@@ -82,23 +82,23 @@ fn asm_encode_string(str: &str) -> String {
 
 fn write_statement(wl: &mut dyn FnMut(&str), stmt: &Statement) {
     match stmt {
-        Statement::PrintStr(StringLiteral::StringLiteral(idx, str)) => {
+        Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
             wl(format!("    ; PrintStr {}", asm_encode_string(str)).as_str());
             wl(format!("    mov rsi, txt_{}", idx).as_str());
             wl(format!("    mov rdx, {}", str.len()).as_str());
             wl("    call _PrintStr");
         }
-        Statement::PrintVar(Variable::Variable(offset, name)) => {
+        Statement::PrintVar(_, Variable::Variable(_, offset, name)) => {
             wl(format!("    ; PrintVar {}", name).as_str());
             wl("    mov rax, mem");
             wl(format!("    add rax, {}", offset * 8).as_str());
             wl("    mov rdi, [rax]");
             wl("    call _PrintInt64");
         }
-        Statement::Call(SubroutineName::SubroutineName(name)) => {
+        Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
             wl(format!("    call__{}", name).as_str());
         }
-        Statement::Assignment(Variable::Variable(offset, name), int_val) => {
+        Statement::Assignment(_, Variable::Variable(_, offset, name), int_val) => {
             wl(format!("    ; Assignment {}, {}", name, int_val).as_str());
             wl("    mov rax, mem");
             wl(format!("    mov rbx, {}", int_val).as_str());
@@ -114,7 +114,7 @@ fn write_statement(wl: &mut dyn FnMut(&str), stmt: &Statement) {
 /// regular  statements.
 fn write_subroutine(wl: &mut dyn FnMut(&str), sub: &TopLevelStatement) {
     match sub {
-        TopLevelStatement::Subroutine(SubroutineName::SubroutineName(name), stmts) => {
+        TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {
             wl(format!("__{}", name).as_str());
             for stmt in stmts.iter() {
                 write_statement(wl, stmt);

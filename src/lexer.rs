@@ -24,7 +24,7 @@ impl Position {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Range {
     pub file: String,
     pub start_line: usize,
@@ -64,6 +64,17 @@ impl Range {
             start_col: start_pos.col,
             end_line: end_pos.line,
             end_col: end_pos.col,
+        }
+    }
+
+    /// Creates a range from a start and end range, using the file from the start range.
+    pub fn from_ranges(start_range: &Self, end_range: &Self) -> Range {
+        Self {
+            file: start_range.file.clone(),
+            start_line: start_range.start_line,
+            start_col: start_range.start_col,
+            end_line: end_range.end_line,
+            end_col: end_range.end_col,
         }
     }
 

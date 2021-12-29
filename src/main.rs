@@ -55,7 +55,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
         exit(0);
     }
 
-    let ProjectType::Executable(project_name) = project.project_type.clone();
+    let ProjectType::Executable(_, project_name) = project.project_type.clone();
 
     match crate::checker::check::check(project) {
         CheckResult::Failed(issues) => {
@@ -113,7 +113,7 @@ fn cleanup(file_name: &str, flags: &HashSet<CleanFlag>) {
     let tokens = crate::lexer::lexer::lex_file(keywords, file_name, &input);
     let project = crate::parser::parse_project(tokens);
 
-    let ProjectType::Executable(project_name) = project.project_type;
+    let ProjectType::Executable(_, project_name) = project.project_type;
 
     println!("Cleaning up files for {}", project_name);
 

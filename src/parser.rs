@@ -1,5 +1,5 @@
 use crate::console;
-use crate::lexer::{Token, TokenData};
+use crate::lexer::{Range, Token, TokenData};
 use crate::project::project::{ProjectType, SubroutineName};
 use crate::project::unchecked_project::*;
 use std::slice::Iter;
@@ -22,6 +22,7 @@ struct ParserState<'a> {
     input: ParserInput<'a>,
     current_token: &'a Token,
     next_token: &'a Token,
+    prev_token: &'a Token,
 
     // Backup.
     backup_input: ParserInput<'a>,
@@ -37,6 +38,7 @@ impl<'a> ParserState<'a> {
             return ParserState {
                 current_token: tkn,
                 next_token: next_tkn,
+                prev_token: tkn,
                 input: input.clone(),
 
                 backup_current_token: tkn,
@@ -66,6 +68,7 @@ impl<'a> ParserState<'a> {
 
     /// Moves to the next token in the input.
     fn next(self: &mut Self) {
+        self.prev_token = self.current_token;
         self.current_token = self.next_token;
         self.next_token = self.input.next().unwrap_or(self.next_token);
     }
@@ -152,6 +155,7 @@ fn consume_eols<'a>(state: &'a mut ParserState, label: &str) {
 
 /// Parses a project type.
 fn parse_project_type<'a>(state: &'a mut ParserState) -> ProjectType {
+    let start_range = &state.current_token.range;
     check_and_next(
         state,
         |t: &Token| t.data == TokenData::KeywordToken("Executable".to_string()),
@@ -167,8 +171,9 @@ fn parse_project_type<'a>(state: &'a mut ParserState) -> ProjectType {
         |t: &Token| t.data.try_get_identifier(),
         "project name",
     );
+    let end_range = &state.prev_token.range;
     consume_eols(state, "project type");
-    ProjectType::Executable(name)
+    ProjectType::Executable(Range::from_ranges(start_range, end_range), name)
 }
 
 /// Parses a separator between the project type definition and the program.
@@ -184,28 +189,36 @@ fn parse_separator<'a>(state: &'a mut ParserState) {
 /// Tries to pa rse a print statement, will return None if the first keyword is not matched and
 /// fail if anything later fails.
 fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> {
+    let start_token = &state.current_token.range;
     if state.current_token.data != TokenData::KeywordToken("print".to_string()) {
         return None;
     }
 
     state.next();
 
+    let id_range = &state.current_token.range;
     let str_lit = state
         .current_token
         .data
         .try_get_string_literal()
-        .map(UncheckedStringLiteral::UStringLiteral);
+        .map(|t| UncheckedStringLiteral::UStringLiteral(id_range.clone(), t));
     let var_name = state
         .current_token
         .data
         .try_get_identifier()
-        .map(UncheckedVariable::UVariable);
+        .map(|t| UncheckedVariable::UVariable(id_range.clone(), t));
 
     state.next();
 
     match (str_lit, var_name) {
-        (Some(sl), _) => Some(UncheckedStatement::UPrintStr(sl)),
-        (_, Some(vn)) => Some(UncheckedStatement::UPrintVar(vn)),
+        (Some(sl), _) => Some(UncheckedStatement::UPrintStr(
+            Range::from_ranges(start_token, id_range),
+            sl,
+        )),
+        (_, Some(vn)) => Some(UncheckedStatement::UPrintVar(
+            Range::from_ranges(start_token, id_range),
+            vn,
+        )),
         _ => {
             let msg = format!(
                 "Error parsing a print  statement, expected a {} or {}, but got {}.",
@@ -222,6 +235,7 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
 /// Tries to parse a call, will return None if the first keyword is not matched and fail if
 /// anything later fails.
 fn try_parse_call<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> {
+    let start_range = &state.current_token.range;
     if state.current_token.data != TokenData::KeywordToken("call".to_string()) {
         return None;
     }
@@ -233,9 +247,10 @@ fn try_parse_call<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> 
         |t| t.data.try_get_identifier(),
         "call subroutine name",
     );
-    Some(UncheckedStatement::UCall(SubroutineName::SubroutineName(
-        sub_name,
-    )))
+    Some(UncheckedStatement::UCall(
+        Range::from_ranges(start_range, &state.prev_token.range),
+        SubroutineName::SubroutineName(state.prev_token.range.clone(), sub_name),
+    ))
 }
 
 /// Parses a (positive or negative) number.
@@ -257,12 +272,14 @@ fn parse_number<'a>(state: &'a mut ParserState) -> i64 {
 /// Tries to parse an assignment, will return None if the firstd keyword is not matched and fail if
 /// anything later fails.
 fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> {
+    let range_start = &state.current_token.range;
     if state.current_token.data != TokenData::KeywordToken("let".to_string()) {
         return None;
     }
 
     state.next();
 
+    let name_range = &state.current_token.range;
     let name = consume(
         state,
         |t| t.data.try_get_identifier(),
@@ -275,7 +292,8 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
     );
     let value = parse_number(state);
     Some(UncheckedStatement::UAssignment(
-        UncheckedVariable::UVariable(name),
+        Range::from_ranges(range_start, &state.prev_token.range),
+        UncheckedVariable::UVariable(name_range.clone(), name),
         value,
     ))
 }
@@ -331,7 +349,9 @@ fn try_parse_statement<'a>(
 /// Tries to parse a subroutine. This parser will commit to parsing a subroutine after having
 /// parsed the subroutine name followed by a ":".
 fn try_parse_subroutine<'a>(state: &'a mut ParserState) -> Option<UncheckedTopLevelStatement> {
+    let range_start = &state.current_token.range;
     let name_opt = state.current_token.data.try_get_identifier();
+    let name_range = &state.current_token.range;
     let has_colon = state.next_token.data == TokenData::SymbolToken(":".to_string());
     match (name_opt, has_colon) {
         (Some(name), true) => {
@@ -349,7 +369,8 @@ fn try_parse_subroutine<'a>(state: &'a mut ParserState) -> Option<UncheckedTopLe
             }
 
             Some(UncheckedTopLevelStatement::USubroutine(
-                SubroutineName::SubroutineName(name),
+                Range::from_ranges(range_start, &state.prev_token.range),
+                SubroutineName::SubroutineName(name_range.clone(), name),
                 stmts,
             ))
         }
@@ -362,12 +383,13 @@ fn try_parse_top_level_statement<'a>(
     state: &'a mut ParserState,
 ) -> Option<UncheckedTopLevelStatement> {
     try_parse_statement(state, 0)
-        .map(UncheckedTopLevelStatement::UStmt)
+        .map(|stmt| UncheckedTopLevelStatement::UStmt(stmt.range().clone(), stmt))
         .or_else(|| try_parse_subroutine(state))
 }
 
 /// Parses a program.
 fn parse_program<'a>(state: &'a mut ParserState) -> UncheckedProgram {
+    let start_range = &state.current_token.range;
     let mut stmts: Vec<UncheckedTopLevelStatement> = Vec::new();
     let mut stmt_opt = try_parse_top_level_statement(state);
     while let Some(stmt) = stmt_opt {
@@ -376,7 +398,10 @@ fn parse_program<'a>(state: &'a mut ParserState) -> UncheckedProgram {
         stmt_opt = try_parse_top_level_statement(state);
     }
 
-    UncheckedProgram { stmts }
+    UncheckedProgram {
+        range: Range::from_ranges(start_range, &state.prev_token.range),
+        stmts,
+    }
 }
 
 /// Parses a project from a list of tokens.
