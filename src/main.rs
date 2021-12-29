@@ -85,7 +85,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
             // Write nasm.
             println!("Generating {}", asm_file);
-            crate::compiler::write_x86_64_linux_nasm(asm_file.as_str(), "TODO: Accept program.".to_string());
+            crate::compiler::write_x86_64_linux_nasm(asm_file.as_str(), checked_project.program);
 
             // Compile nasm.
             console::run_cmd_echoed(Vec::from([
