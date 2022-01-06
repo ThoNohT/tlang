@@ -77,18 +77,43 @@ fn asm_encode_string(str: &str) -> String {
     return if in_str { format!("{}\"", r) } else { r };
 }
 
+/// Writes an expression, given a writing function.
+/// The result of the expression will be on top of the stack.
+fn write_expression(wl: &mut dyn FnMut(u8, &str), offset: u8, expr: &Expression) {
+    match expr {
+        Expression::IntLiteral(_, int_val) => {
+            wl(offset, format!("push {} ; Int literal.", int_val).as_str());
+        }
+        Expression::Binary(_, Operator::Add(_), l_expr, r_expr) => {
+            wl(offset, "; Binary add.");
+            write_expression(wl, offset + 1, l_expr);
+            write_expression(wl, offset + 1, r_expr);
+            wl(offset, "; Binary add, calculate result");
+            wl(offset, "pop rbx");
+            wl(offset, "pop rax");
+            // Calculate result, and push.
+            wl(offset, "add rax, rbx");
+            wl(offset, format!("push rax").as_str());
+        }
+        #[allow(unreachable_patterns)]
+        _ => {
+            unimplemented!("Expression type not yet implemented.");
+        }
+    }
+}
+
 // TODO: Customize Rust code formatter?
 /// Writes a statement, given a writing function.
 fn write_statement(wl: &mut dyn FnMut(u8, &str), stmt: &Statement) {
     match stmt {
         Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
-            wl(1, format!("; PrintStr {}", asm_encode_string(str)).as_str());
+            wl(1, format!("; PrintStr {}.", asm_encode_string(str)).as_str());
             wl(1, format!("mov rsi, txt_{}", idx).as_str());
             wl(1, format!("mov rdx, {}", str.len()).as_str());
             wl(1, "call _PrintStr");
         }
         Statement::PrintVar(_, Variable::Variable(_, offset, name)) => {
-            wl(1, format!("; PrintVar {}", name).as_str());
+            wl(1, format!("; PrintVar {}.", name).as_str());
             wl(1, "mov rax, mem");
             wl(1, format!("add rax, {}", offset * 8).as_str());
             wl(1, "mov rdi, [rax]");
@@ -97,18 +122,16 @@ fn write_statement(wl: &mut dyn FnMut(u8, &str), stmt: &Statement) {
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
             wl(1, format!("call__{}", name).as_str());
         }
-        Statement::Assignment(_, Variable::Variable(_, offset, name), expr) => match expr {
-            &Expression::IntLiteral(_, int_val) => {
-                wl(1, format!("; Assignment {}, {}", name, int_val).as_str());
-                wl(1, "mov rax, mem");
-                wl(1, format!("mov rbx, {}", int_val).as_str());
-                wl(1, format!("add rax, {}", offset * 8).as_str());
-                wl(1, "mov [rax], rbx");
-            }
-            _ => {
-                unimplemented!("Expression type not yet implemented.");
-            }
-        },
+        Statement::Assignment(_, Variable::Variable(_, offset, name), expr) => {
+            wl(1, format!("; Assignment {}.", name).as_str());
+            write_expression(wl, 2, expr);
+            wl(1, "pop rbx");
+            // Put address offset from mem in rax
+            wl(1, "mov rax, mem");
+            wl(1, format!("add rax, {}", offset * 8).as_str());
+            // Store value of rbx in address at rax.
+            wl(1, "mov [rax], rbx");
+        }
     }
     wl(0, "");
 }

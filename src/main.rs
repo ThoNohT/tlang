@@ -14,6 +14,7 @@ use std::process::exit;
 use std::process::Command;
 use std::str;
 
+mod prelude;
 mod checker;
 mod compiler;
 mod console;

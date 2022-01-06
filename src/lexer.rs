@@ -44,7 +44,7 @@ impl Range {
         )
     }
 
-    /// Converts a range to a srting that points to the starting and ending position of the range in its file.
+    /// Converts a range to a string that points to the starting and ending position of the range in its file.
     pub fn to_full_string(self: &Self) -> String {
         format!(
             "{}:{}:{} -> {}:{}",
@@ -177,7 +177,7 @@ impl TokenData {
         }
     }
 
-    /// Returns the value of a number in a token, if it is a number token, Noen otherwise.
+    /// Returns the value of a number in a token, if it is a number token, None otherwise.
     pub fn try_get_number(self: &Self) -> Option<i64> {
         match *self {
             Self::NumberToken(n) => Some(n),
@@ -190,6 +190,20 @@ impl TokenData {
         match *self {
             Self::IndentationToken(_) => true,
             _ => false,
+        }
+    }
+
+    /// Rurns the specified symbol, if it is the specified symbol, None otherwise.
+    pub fn try_get_symbol(self: &Self, sym: &str) -> Option<String> {
+        match self {
+            Self::SymbolToken(s) => {
+                if s == sym {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 }
@@ -344,7 +358,7 @@ pub mod lexer {
             self.tokens.push(tkn);
         }
 
-        /// Can be used to check a predicate, and if it fials, exit with the specified error
+        /// Can be used to check a predicate, and if it fails, exit with the specified error
         /// message, including some location data.
         fn check_lexer_predicate(self: &Self, pred: bool, msg: &str) {
             let msg = format!(
@@ -363,7 +377,7 @@ pub mod lexer {
 
     /// Lexes an indentation token, consisting of spaces at the sart of a line.
     /// Only allows spaces as indentation. The lexe will fail when it encounters any other
-    /// whitespace character, or when an unexepected number of spaces is encountered.
+    /// whitespace character, or when an unexpected number of spaces is encountered.
     fn lex_indent(state: &mut LexerState) {
         state.set_backup_point();
 
@@ -455,7 +469,7 @@ pub mod lexer {
             );
         }
 
-        // An escaped character can be a charcter from mapped_chars.
+        // An escaped character can be a character from mapped_chars.
         // If the character was not mapped, return the escape character and the character itself.
         fn lex_escaped_char(state: &mut LexerState) -> String {
             let mapped_chars = HashMap::from([

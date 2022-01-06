@@ -1,6 +1,7 @@
 use crate::console;
 use crate::lexer::{Range, Token, TokenData};
-use crate::project::project::{ProjectType, SubroutineName};
+use crate::prelude::OptExt;
+use crate::project::project::{Operator, ProjectType, SubroutineName};
 use crate::project::unchecked_project::*;
 use std::slice::Iter;
 
@@ -18,16 +19,12 @@ impl<'a> Iterator for ParserInput<'a> {
 
 /// The current state for a parser. Allows setting and restoring a backup point, for if a lookahead
 /// of 1 is not enough.
+#[derive(Clone)]
 struct ParserState<'a> {
     input: ParserInput<'a>,
     current_token: &'a Token,
     next_token: &'a Token,
     prev_token: &'a Token,
-
-    // Backup.
-    backup_input: ParserInput<'a>,
-    backup_current_token: &'a Token,
-    backup_next_token: &'a Token,
 }
 
 impl<'a> ParserState<'a> {
@@ -40,30 +37,20 @@ impl<'a> ParserState<'a> {
                 next_token: next_tkn,
                 prev_token: tkn,
                 input: input.clone(),
-
-                backup_current_token: tkn,
-                backup_next_token: next_tkn,
-                backup_input: input,
             };
         }
 
-        console::test_condition(false, "Error parsing, no input.");
-        unreachable!()
+        console::return_with_error("Error parsing, no input.")
     }
 
-    /// Stores the current state in the backup.
-    fn backup(self: &mut Self) {
-        self.backup_input = self.input.clone();
-        self.backup_current_token = self.current_token;
-        self.backup_next_token = self.next_token;
+    /// Returns a backup copy of the current state.
+    fn backup(self: &mut Self) -> Self {
+        self.clone()
     }
 
-    /// Restores the current state to the backup. If no backup was set, the initial state is
-    /// restored.
-    fn restore(self: &mut Self) {
-        self.input = self.backup_input.clone();
-        self.current_token = self.backup_current_token;
-        self.next_token = self.backup_next_token;
+    /// Restores the current state to the provided backup.
+    fn restore(self: &mut Self, backup: &Self) {
+        self.clone_from(backup);
     }
 
     /// Moves to the next token in the input.
@@ -96,8 +83,20 @@ fn check_and_next<'a>(state: &'a mut ParserState, f: fn(&Token) -> bool, label: 
     state.next();
 }
 
+/// Tries to consume a token, if the check on the token returns Some. Returns None otherwise.
+/// Doesn't consume a token if the check fails.
+fn try_consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>) -> Option<T> {
+    match f(state.current_token) {
+        Some(v) => {
+            state.next();
+            Some(v)
+        }
+        None => None,
+    }
+}
+
 /// Consumes the current token, if the check on the token returns Some. If the check returns None,
-/// displays an error message that parsing the entithy with the provided label failed, and exits
+/// displays an error message that parsing the entity with the provided label failed, and exits
 /// with error code 1.
 fn consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>, label: &str) -> T {
     let t = state.current_token;
@@ -111,8 +110,7 @@ fn consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>, label:
                 label,
                 t.data.to_string(true)
             );
-            console::test_condition(false, msg.as_str());
-            unreachable!();
+            console::return_with_error(msg.as_str())
         }
     }
 }
@@ -226,8 +224,7 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
                 TokenData::IdentifierToken("".to_string()).to_string(false),
                 state.current_token.data.to_string(true)
             );
-            console::test_condition(false, msg.as_str());
-            unreachable!();
+            console::return_with_error(msg.as_str())
         }
     }
 }
@@ -254,19 +251,57 @@ fn try_parse_call<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> 
 }
 
 /// Parses a (positive or negative) number.
-fn parse_number<'a>(state: &'a mut ParserState) -> i64 {
+fn try_parse_number<'a>(state: &'a mut ParserState) -> Option<i64> {
+    let backup = state.backup();
     let is_negative = state.current_token.data == TokenData::SymbolToken("-".to_string());
     if is_negative {
         state.next();
     }
 
-    let value = consume(state, |t| t.data.try_get_number(), "number value");
+    try_consume(state, |t| t.data.try_get_number())
+        .map(|n| if is_negative { -1 * n } else { n })
+        .or_do(|| {
+            state.restore(&backup);
+        })
+}
 
-    if is_negative {
-        -1 * value
-    } else {
-        value
+/// Tries to parse an operator.
+fn try_parse_operator<'a>(state: &'a mut ParserState) -> Option<Operator> {
+    try_consume(state, |c| c.data.try_get_symbol("+"))
+        .map(|_| Operator::Add(state.prev_token.range.clone()))
+}
+
+/// Tries to parse an expression.
+fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
+    /// Tries to parse a binary expression.
+    fn try_parse_binary<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
+        let backup = state.backup();
+        try_parse_int_literal(state)
+            .bind(|l| {
+                try_parse_operator(state).bind(|op| {
+                    try_parse_expression(state).map(|ex| {
+                        UncheckedExpression::UBinary(
+                            Range::from_ranges(
+                                &backup.current_token.range.clone(),
+                                &state.current_token.range.clone(),
+                            ),
+                            op,
+                            Box::new(l),
+                            Box::new(ex),
+                        )
+                    })
+                })
+            })
+            .or_do(|| state.restore(&backup))
     }
+
+    fn try_parse_int_literal<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
+        try_parse_number(state)
+            .map(|n| UncheckedExpression::UIntLiteral(state.current_token.range.clone(), n))
+    }
+
+    // All of the sub parsers reset state, so no need to do it here.
+    try_parse_binary(state).or_else(|| try_parse_int_literal(state))
 }
 
 /// Tries to parse an assignment, will return None if the firstd keyword is not matched and fail if
@@ -290,16 +325,16 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
         |t| t.data == TokenData::SymbolToken("=".to_string()),
         "assignment",
     );
-    let value = parse_number(state);
+    let expr = try_parse_expression(state)
+        .assert_some(|| console::return_with_error("Failed to parse an expression."));
     Some(UncheckedStatement::UAssignment(
         Range::from_ranges(range_start, &state.prev_token.range),
         UncheckedVariable::UVariable(name_range.clone(), name),
-        // TODO: Parse a full expression.
-        UncheckedExpression::UIntLiteral(name_range.clone(), value),
+        expr,
     ))
 }
 
-/// Checks that  the next token is indented to the spdecified indent level.
+/// Checks that  the next token is indented to the specified indent level.
 /// For an indent level of 0, it is checked that  the next token is not an indent token, and no
 /// tokens are consumed.
 /// If the next token is the desired indent token (greater than 0), it is consumed, otherwise
@@ -325,26 +360,22 @@ fn try_parse_statement<'a>(
     state: &'a mut ParserState,
     indent: usize,
 ) -> Option<UncheckedStatement> {
-    state.backup();
+    let backup = state.backup();
 
     if !check_indent(state, indent) {
         return None;
     }
 
-    let result = try_parse_print(state)
+    try_parse_print(state)
         .or_else(|| try_parse_call(state))
-        .or_else(|| try_parse_assignment(state));
-
-    match result {
-        Some(r) => {
+        .or_else(|| try_parse_assignment(state))
+        .or_do(|| {
+            state.restore(&backup);
+        })
+        .map(|s| {
             consume_eols(state, "statement");
-            Some(r)
-        }
-        None => {
-            state.restore();
-            None
-        }
-    }
+            s
+        })
 }
 
 /// Tries to parse a subroutine. This parser will commit to parsing a subroutine after having

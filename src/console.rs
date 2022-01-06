@@ -8,7 +8,7 @@ pub mod compiler_flag {
         /// Returns a map for all flags, indexed by the string that triggers the flag.
         fn all_flags() -> HashMap<String, Self>;
 
-        /// Returns as tring explaining the specified flag.
+        /// Returns as string explaining the specified flag.
         fn explain(flag: &Self) -> &str;
 
         /// Checks whether the trait is active in the provided set of traits.
@@ -102,8 +102,8 @@ pub mod clean_flag {
 pub type AppResult<T> = Result<T, String>;
 
 pub trait ReturnOnError<T, E> {
-    /// Checks the results, and if it is an error, the error message and additionaly an
-    /// aditional message are shown and the application exits with exit code 1.
+    /// Checks the results, and if it is an error, the error message and additionally an
+    /// additional message are shown and the application exits with exit code 1.
     fn handle_with_exit(self, additional_msg: Option<&str>) -> T;
 }
 
@@ -155,12 +155,16 @@ pub fn test_condition_with_usage_error(compiler_name: &str, condition: bool, err
     }
 }
 
+pub fn return_with_error<T>(error: &str) -> T {
+    e_red!("{}\n", error);
+    exit(1)
+}
+
 /// Checks a condition, and if it fails, displays the specified error and then exits with exit
 /// code 1.
 pub fn test_condition(condition: bool, error: &str) {
     if !condition {
-        e_red!("{}\n", error);
-        exit(1);
+        return_with_error::<()>(error);
     }
 }
 

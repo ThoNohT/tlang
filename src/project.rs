@@ -30,7 +30,7 @@ pub mod project {
 
     #[derive(Clone, Debug)]
     pub enum Operator {
-        Add(),
+        Add(Range),
     }
 
     #[derive(Clone, Debug)]
