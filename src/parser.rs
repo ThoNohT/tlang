@@ -294,7 +294,8 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
     Some(UncheckedStatement::UAssignment(
         Range::from_ranges(range_start, &state.prev_token.range),
         UncheckedVariable::UVariable(name_range.clone(), name),
-        value,
+        // TODO: Parse a full expression.
+        UncheckedExpression::UIntLiteral(name_range.clone(), value),
     ))
 }
 

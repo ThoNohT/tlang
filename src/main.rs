@@ -15,12 +15,11 @@ use std::process::Command;
 use std::str;
 
 mod checker;
+mod compiler;
 mod console;
 mod lexer;
 mod parser;
 mod project;
-mod compiler;
-
 
 fn read_file(file_name: &str) -> console::AppResult<String> {
     let mut file =

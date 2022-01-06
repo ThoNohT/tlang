@@ -28,6 +28,17 @@ pub mod project {
         Variable(Range, usize, String),
     }
 
+    #[derive(Clone, Debug)]
+    pub enum Operator {
+        Add(),
+    }
+
+    #[derive(Clone, Debug)]
+    pub enum Expression {
+        IntLiteral(Range, i64),
+        Binary(Range, Operator, Box<Expression>, Box<Expression>),
+    }
+
     /// A statement that can either happen on top level or in a subroutine.
     #[derive(Clone, Debug)]
     pub enum Statement {
@@ -37,8 +48,8 @@ pub mod project {
         PrintVar(Range, Variable),
         /// Call a subroutine.
         Call(Range, SubroutineName),
-        /// Assign an i64 to a variable.
-        Assignment(Range, Variable, i64),
+        /// Assign an expression to a variable.
+        Assignment(Range, Variable, Expression),
     }
 
     /// A statement that can only happen on the top level.
@@ -109,7 +120,7 @@ pub mod project {
 
 pub mod unchecked_project {
     use crate::lexer::Range;
-    use crate::project::project::{ProjectType, SubroutineName};
+    use crate::project::project::{Operator, ProjectType, SubroutineName};
 
     #[derive(Clone, Debug)]
     pub enum UncheckedStringLiteral {
@@ -122,11 +133,22 @@ pub mod unchecked_project {
     }
 
     #[derive(Clone, Debug)]
+    pub enum UncheckedExpression {
+        UIntLiteral(Range, i64),
+        UBinary(
+            Range,
+            Operator,
+            Box<UncheckedExpression>,
+            Box<UncheckedExpression>,
+        ),
+    }
+
+    #[derive(Clone, Debug)]
     pub enum UncheckedStatement {
         UPrintStr(Range, UncheckedStringLiteral),
         UPrintVar(Range, UncheckedVariable),
         UCall(Range, SubroutineName),
-        UAssignment(Range, UncheckedVariable, i64),
+        UAssignment(Range, UncheckedVariable, UncheckedExpression),
     }
 
     impl UncheckedStatement {

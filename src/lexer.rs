@@ -189,7 +189,7 @@ impl TokenData {
     pub fn is_indentation(self: &Self) -> bool {
         match *self {
             Self::IndentationToken(_) => true,
-            _ => false
+            _ => false,
         }
     }
 }

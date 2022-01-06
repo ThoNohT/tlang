@@ -97,13 +97,18 @@ fn write_statement(wl: &mut dyn FnMut(u8, &str), stmt: &Statement) {
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
             wl(1, format!("call__{}", name).as_str());
         }
-        Statement::Assignment(_, Variable::Variable(_, offset, name), int_val) => {
-            wl(1, format!("; Assignment {}, {}", name, int_val).as_str());
-            wl(1, "mov rax, mem");
-            wl(1, format!("mov rbx, {}", int_val).as_str());
-            wl(1, format!("add rax, {}", offset * 8).as_str());
-            wl(1, "mov [rax], rbx");
-        }
+        Statement::Assignment(_, Variable::Variable(_, offset, name), expr) => match expr {
+            &Expression::IntLiteral(_, int_val) => {
+                wl(1, format!("; Assignment {}, {}", name, int_val).as_str());
+                wl(1, "mov rax, mem");
+                wl(1, format!("mov rbx, {}", int_val).as_str());
+                wl(1, format!("add rax, {}", offset * 8).as_str());
+                wl(1, "mov [rax], rbx");
+            }
+            _ => {
+                unimplemented!("Expression type not yet implemented.");
+            }
+        },
     }
     wl(0, "");
 }
@@ -159,7 +164,10 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program) {
     wl(0, "");
 
     wl(0, "_PrintStr:");
-    wl(1, "; PrintStr helper. Assumes rsi and rdx have been set before calling.");
+    wl(
+        1,
+        "; PrintStr helper. Assumes rsi and rdx have been set before calling.",
+    );
     wl(1, "mov rax, 1");
     wl(1, "mov rdi, 1");
     wl(1, "syscall");
@@ -179,12 +187,18 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program) {
     wl(0, "segment readable writable");
 
     for (str, idx) in program.strings.iter() {
-        wl(1, format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str());
+        wl(
+            1,
+            format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str(),
+        );
     }
     wl(0, "");
 
     // Start of memory section.
     if !program.variables.is_empty() {
-        wl(1, format!("mem: rb {}", program.variables.len() * 8).as_str());
+        wl(
+            1,
+            format!("mem: rb {}", program.variables.len() * 8).as_str(),
+        );
     }
 }
