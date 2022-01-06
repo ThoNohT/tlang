@@ -59,11 +59,11 @@ impl<T: Clone> CheckResult<T> {
     }
 
     /// Applies a mapping function to the result of a CheckResult, if it is Checked.
-    pub fn map<R: Clone>(self: &Self, mut f: impl FnMut(T) -> R) -> CheckResult<R> {
+    pub fn map<R: Clone>(self: &Self, f: impl FnOnce(T) -> R) -> CheckResult<R> {
         self.bind(|r| CheckResult::perfect(f(r)))
     }
 
-    pub fn bind<R: Clone>(self: &Self, mut f: impl FnMut(T) -> CheckResult<R>) -> CheckResult<R> {
+    pub fn bind<R: Clone>(self: &Self, f: impl FnOnce(T) -> CheckResult<R>) -> CheckResult<R> {
         match self {
             Self::Failed(issues) => CheckResult::Failed(issues.clone()),
             Self::Checked(v, issues) => match f(v.clone()) {
@@ -173,12 +173,7 @@ pub mod check {
             UncheckedExpression::UBinary(r, op, ex_l, ex_r) => {
                 check_expression(strings, variables, ex_l).bind(|le| {
                     check_expression(strings, variables, ex_r).map(|re| {
-                        Expression::Binary(
-                            r.clone(),
-                            op.clone(),
-                            Box::new(le.clone()),
-                            Box::new(re),
-                        )
+                        Expression::Binary(r.clone(), op.clone(), Box::new(le), Box::new(re))
                     })
                 })
             }
