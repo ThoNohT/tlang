@@ -104,9 +104,8 @@ fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: &String) -> usize {
 
 /// Returns the offset for the specified variable name and the updated set of variable offsets. If
 /// the variable was defined before, this offset is returned.
-/// If `assign` is false, then a reference to a non-existent string will fail the compilation.
-// TODO: Probably prevent assigning to the same variable multiple times.
-// TODO: Variables local to subroutines.
+/// If `assign` is false, then a reference to a non-existent variable will fail the compilation.
+/// If `assign` is true, then a reference to an existing variable will fail the compilation.
 fn get_variable_offset<'a>(
     range: &Range,
     variables: &'a mut VariableOffsets,
@@ -114,7 +113,15 @@ fn get_variable_offset<'a>(
     name: &String,
 ) -> CheckResult<usize> {
     if let Some(idx) = variables.get(name) {
-        CheckResult::Checked(idx.clone(), Vec::new())
+        if !assign {
+            CheckResult::Checked(idx.clone(), Vec::new())
+        } else {
+            println!("{} defined", name);
+            CheckResult::Failed(Vec::from([CheckIssue::CheckError(
+                range.clone(),
+                format!("Variable {} already defined.", name),
+            )]))
+        }
     } else if assign {
         let idx = variables.len();
         variables.insert(name.clone(), idx);
@@ -242,7 +249,7 @@ pub mod check {
                     }
 
                     let issues = checked_stmts.iter().flat_map(CheckResult::issues).collect();
-                    let failed = checked_stmts.iter().map(CheckResult::is_failed).all(|x| x);
+                    let failed = checked_stmts.iter().map(CheckResult::is_failed).any(|x| x);
 
                     if !failed {
                         let new_stmts = checked_stmts
