@@ -31,6 +31,7 @@ pub mod project {
     #[derive(Clone, Debug)]
     pub enum Operator {
         Add(Range),
+        Sub(Range),
     }
 
     #[derive(Clone, Debug)]

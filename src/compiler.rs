@@ -79,14 +79,30 @@ fn asm_encode_string(str: &str) -> String {
     return if in_str { format!("{}\"", r) } else { r };
 }
 
+/// Writes an operator in an expression, given a writing function.
+fn write_op(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, op: &Operator) {
+    match op {
+        Operator::Add(_) => {
+            wl(offset, false, "add rax, rbx");
+        }
+        Operator::Sub(_) => {
+            wl(offset, false, "sub rax, rbx");
+        }
+    }
+}
+
 /// Writes an expression, given a writing function.
 /// The result of the expression will be on top of the stack.
 fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expression) {
     match expr {
         Expression::IntLiteral(_, int_val) => {
-            wl(offset, false, format!("push {} ; Int literal.", int_val).as_str());
+            wl(
+                offset,
+                false,
+                format!("push {} ; Int literal.", int_val).as_str(),
+            );
         }
-        Expression::Binary(_, Operator::Add(_), l_expr, r_expr) => {
+        Expression::Binary(_, op, l_expr, r_expr) => {
             wl(offset, true, "; Binary add.");
             write_expression(wl, offset + 1, l_expr);
             write_expression(wl, offset + 1, r_expr);
@@ -94,12 +110,8 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
             wl(offset, false, "pop rbx");
             wl(offset, false, "pop rax");
             // Calculate result, and push.
-            wl(offset, false, "add rax, rbx");
+            write_op(wl, offset, op);
             wl(offset, false, format!("push rax").as_str());
-        }
-        #[allow(unreachable_patterns)]
-        _ => {
-            unimplemented!("Expression type not yet implemented.");
         }
     }
 }
@@ -110,7 +122,8 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
     match stmt {
         Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
             wl(
-                1, true,
+                1,
+                true,
                 format!("; PrintStr {}.", asm_encode_string(str)).as_str(),
             );
             wl(1, false, format!("mov rsi, txt_{}", idx).as_str());
@@ -147,7 +160,7 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
 fn write_subroutine(wl: &mut dyn FnMut(u8, bool, &str), sub: &TopLevelStatement) {
     match sub {
         TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {
-            wl(0, false,  format!("__{}", name).as_str());
+            wl(0, false, format!("__{}", name).as_str());
             for stmt in stmts.iter() {
                 write_statement(wl, stmt);
             }
@@ -202,7 +215,8 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
 
     wl(0, false, "_PrintStr:");
     wl(
-        1, true,
+        1,
+        true,
         "; PrintStr helper. Assumes rsi and rdx have been set before calling.",
     );
     wl(1, false, "mov rax, 1");
@@ -225,7 +239,8 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
 
     for (str, idx) in program.strings.iter() {
         wl(
-            1, false,
+            1,
+            false,
             format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str(),
         );
     }
@@ -234,7 +249,8 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     // Start of memory section.
     if !program.variables.is_empty() {
         wl(
-            1, false,
+            1,
+            false,
             format!("mem: rb {}", program.variables.len() * 8).as_str(),
         );
     }

@@ -269,6 +269,10 @@ fn try_parse_number<'a>(state: &'a mut ParserState) -> Option<i64> {
 fn try_parse_operator<'a>(state: &'a mut ParserState) -> Option<Operator> {
     try_consume(state, |c| c.data.try_get_symbol("+"))
         .map(|_| Operator::Add(state.prev_token.range.clone()))
+        .or_else(|| {
+            try_consume(state, |c| c.data.try_get_symbol("-"))
+                .map(|_| Operator::Sub(state.prev_token.range.clone()))
+        })
 }
 
 /// Tries to parse an expression.
