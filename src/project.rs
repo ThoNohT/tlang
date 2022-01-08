@@ -14,6 +14,11 @@ pub mod project {
             let SubroutineName::SubroutineName(_, value) = self;
             value
         }
+
+        /// Checks whether two subroutine names are equal.
+        pub fn equals(self: &Self, other: Option<Self>) -> bool {
+            other.map_or(false, |o| o.value() == self.value())
+        }
     }
 
     /// A string literal, including its index in the list of declared string literals.

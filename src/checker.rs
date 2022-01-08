@@ -132,25 +132,24 @@ pub mod check {
     use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
     use crate::project::project::*;
     use crate::project::unchecked_project::*;
-    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::collections::{HashSet, VecDeque};
 
     fn unused_subs(program: &UncheckedProgram) -> HashSet<SubroutineName> {
         let subroutines = program.subroutines();
         let mut unused = subroutines
-            .clone()
             .iter()
-            .filter_map(UncheckedTopLevelStatement::name)
-            .collect::<HashSet<SubroutineName>>();
+            .filter_map(|s| s.name().map(|n| n.value().clone()))
+            .collect::<HashSet<String>>();
 
         let mut stmts_to_check = VecDeque::from(program.statements());
         while let Some(stmt) = stmts_to_check.pop_front() {
             if let Some(UncheckedStatement::UCall(_, n)) = stmt.call() {
-                unused.remove(&n);
+                unused.remove(n.value());
                 let new_stmts = subroutines
                     .clone()
                     .into_iter()
-                    .find(|s| Some(n.clone()) == s.name().clone())
-                    .filter(|s| s.name().map_or(false, |n| unused.contains(&n)))
+                    .find(|s| n.equals(s.name()))
+                    .filter(|s| s.name().map_or(false, |n| unused.contains(n.value())))
                     .map(|tls| tls.subroutine_statements())
                     .unwrap_or(Vec::new());
 
@@ -158,7 +157,11 @@ pub mod check {
             }
         }
 
-        unused
+        subroutines
+            .iter()
+            .filter_map(UncheckedTopLevelStatement::name)
+            .filter(|s| unused.contains(s.value()))
+            .collect::<HashSet<SubroutineName>>()
     }
 
     fn check_expression(
@@ -292,20 +295,23 @@ pub mod check {
         let call_names = prog
             .calls()
             .iter()
-            .filter_map(UncheckedStatement::name)
-            .collect::<HashSet<SubroutineName>>();
+            .filter_map(|s| s.name().map(|n| n.value().clone()))
+            .collect::<HashSet<String>>();
         let sub_names = prog
             .subroutines()
             .iter()
-            .filter_map(UncheckedTopLevelStatement::name)
+            .filter_map(|s| s.name().map(|n| n.value().clone()))
             .collect();
 
         let undefined_calls = call_names
             .difference(&sub_names)
-            .collect::<HashSet<&SubroutineName>>();
+            .collect::<HashSet<&String>>();
 
-        let mut call_errors = undefined_calls
+        let mut call_errors = prog
+            .calls()
             .iter()
+            .filter_map(UncheckedStatement::name)
+            .filter(|n| undefined_calls.contains(n.value()))
             .map(|SubroutineName::SubroutineName(r, s)| {
                 CheckIssue::CheckError(r.clone(), format!("Call to undefined subroutine '{}'.", s))
             })

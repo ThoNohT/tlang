@@ -138,7 +138,7 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
             wl(1, false, "call _PrintInt64");
         }
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
-            wl(1, false, format!("call__{}", name).as_str());
+            wl(1, false, format!("call __{}", name).as_str());
         }
         Statement::Assignment(_, Variable::Variable(_, offset, name), expr) => {
             wl(1, true, format!("; Assignment {}.", name).as_str());
@@ -160,7 +160,7 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
 fn write_subroutine(wl: &mut dyn FnMut(u8, bool, &str), sub: &TopLevelStatement) {
     match sub {
         TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {
-            wl(0, false, format!("__{}", name).as_str());
+            wl(0, false, format!("__{}:", name).as_str());
             for stmt in stmts.iter() {
                 write_statement(wl, stmt);
             }
