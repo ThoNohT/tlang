@@ -236,8 +236,9 @@ pub mod check {
             match top_stmt {
                 UncheckedTopLevelStatement::USubroutine(r, name, stmts) => {
                     let mut checked_stmts = Vec::new();
+                    let mut local_variables = VariableOffsets::new();
                     for stmt in stmts.iter() {
-                        checked_stmts.push(check_stmt(strings, variables, stmt));
+                        checked_stmts.push(check_stmt(strings, &mut local_variables, stmt));
                     }
 
                     let issues = checked_stmts.iter().flat_map(CheckResult::issues).collect();
@@ -261,8 +262,8 @@ pub mod check {
             }
         }
 
-        let mut strings: StringIndexes = HashMap::new();
-        let mut variables: VariableOffsets = HashMap::new();
+        let mut strings = StringIndexes::new();
+        let mut variables = VariableOffsets::new();
 
         // Check and convert each statement one by one.
         let mut stmts: Vec<CheckResult<TopLevelStatement>> = Vec::new();
