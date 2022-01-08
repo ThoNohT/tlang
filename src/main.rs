@@ -84,7 +84,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
             // Write fasm.
             println!("Generating {}", asm_file);
-            crate::compiler::write_x86_64_linux_fasm(asm_file.as_str(), checked_project.program);
+            crate::compiler::write_x86_64_linux_fasm(asm_file.as_str(), checked_project.program, flags);
 
             // Compile fasm.
             console::run_cmd_echoed(Vec::from([

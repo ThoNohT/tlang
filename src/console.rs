@@ -49,6 +49,7 @@ pub mod build_flag {
         DumpLexerTokens,
         DumpUncheckedSyntaxTree,
         DumpCheckedSyntaxTree,
+        PrettyPrintAsm,
     }
 
     impl CompilerFlag for BuildFlag {
@@ -58,6 +59,7 @@ pub mod build_flag {
                 ("-dt".to_string(), BuildFlag::DumpLexerTokens),
                 ("-dtu".to_string(), BuildFlag::DumpUncheckedSyntaxTree),
                 ("-dtc".to_string(), BuildFlag::DumpCheckedSyntaxTree),
+                ("-app".to_string(), BuildFlag::PrettyPrintAsm),
             ])
         }
 
@@ -65,12 +67,9 @@ pub mod build_flag {
             match flag {
                 BuildFlag::Run => "Run the program after compiling it.",
                 BuildFlag::DumpLexerTokens => "Dump the tokens produced by the lexer and exit.",
-                BuildFlag::DumpUncheckedSyntaxTree => {
-                    "Dump the unchecked syntax tree produced by the parser and exit."
-                }
-                BuildFlag::DumpCheckedSyntaxTree => {
-                    "Dump the checked syntax tree produced by the checker and exit."
-                }
+                BuildFlag::DumpUncheckedSyntaxTree => "Dump the unchecked syntax tree produced by the parser and exit.",
+                BuildFlag::DumpCheckedSyntaxTree => "Dump the checked syntax tree produced by the checker and exit.",
+                BuildFlag::PrettyPrintAsm => "Pretty print assembly code, including comments and indentation.",
             }
         }
     }
