@@ -11,10 +11,10 @@ if exists("b:current_syntax")
     finish
 endif
 
-syntax keyword tlangTodos TODO
+syntax keyword tlangTodo TODO
 
 " Language keywords.
-syntax keyword tlangKeywords Executable let call print
+syntax keyword tlangKeyword Executable let call print
 
 " Comments.
 syntax region tlangLineComment start="//" end="$" contains=tlangTodos
@@ -22,10 +22,16 @@ syntax region tlangLineComment start="//" end="$" contains=tlangTodos
 " Strings.
 syntax region tlangString start=/\v"/ skip=/\v\\./ end=/\v"/
 
+" Operators.
+syntax match tlangOperator "\v\+"
+syntax match tlangOperator "\v\-"
+syntax match tlangOperator "\v\="
+
 " Set highlights
-highlight default link tlangTodos Todo
-highlight default link tlangKeywords Keyword
+highlight default link tlangTodo Todo
+highlight default link tlangKeyword Keyword
 highlight default link tlangLineComment Comment
 highlight default link tlangString String
+highlight link tlangOperator Operator
 
 let b:current_syntax = "tlang"
