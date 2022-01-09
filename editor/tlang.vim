@@ -27,11 +27,15 @@ syntax match tlangOperator "\v\+"
 syntax match tlangOperator "\v\-"
 syntax match tlangOperator "\v\="
 
+" Separator
+syntax match tlangSeparator "\v\-\-\-+"
+
 " Set highlights
 highlight default link tlangTodo Todo
 highlight default link tlangKeyword Keyword
 highlight default link tlangLineComment Comment
 highlight default link tlangString String
-highlight link tlangOperator Operator
+highlight default link tlangOperator Operator
+highlight default link tlangSeparator Delimiter
 
 let b:current_syntax = "tlang"
