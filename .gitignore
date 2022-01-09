@@ -1,8 +1,8 @@
-/target
-
-# Ignore files without extensions, by ignoring all except files with extensions.
+# Ignore files without extensions, by ignoring all except files with extensions and folders.
 *
+!*/
 !*.*
-!src/
+
+/target
 *.asm
 
