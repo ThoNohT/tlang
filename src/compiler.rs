@@ -102,6 +102,13 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
                 format!("push {} ; Int literal.", int_val).as_str(),
             );
         }
+        Expression::Variable(_, Variable::Variable(_, var_offset, name)) => {
+            wl(offset, true, format!("; Variable {}.", name).as_str());
+            wl(offset, false, "mov rax, mem");
+            wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
+            wl(offset, false, "mov rbx, [rax]");
+            wl(offset, false, "push rbx");
+        }
         Expression::Binary(_, op, l_expr, r_expr) => {
             wl(offset, true, "; Binary add.");
             write_expression(wl, offset + 1, l_expr);

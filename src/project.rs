@@ -42,6 +42,7 @@ pub mod project {
     #[derive(Clone, Debug)]
     pub enum Expression {
         IntLiteral(Range, i64),
+        Variable(Range, Variable),
         Binary(Range, Operator, Box<Expression>, Box<Expression>),
     }
 
@@ -141,6 +142,7 @@ pub mod unchecked_project {
     #[derive(Clone, Debug)]
     pub enum UncheckedExpression {
         UIntLiteral(Range, i64),
+        UVariable(Range, UncheckedVariable),
         UBinary(
             Range,
             Operator,

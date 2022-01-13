@@ -281,6 +281,7 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
     fn try_parse_binary<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
         let backup = state.backup();
         try_parse_int_literal(state)
+            .or_else(|| try_parse_variable(state))
             .bind(|l| {
                 try_parse_operator(state).bind(|op| {
                     try_parse_expression(state).map(|ex| {
@@ -299,13 +300,24 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
             .or_do(|| state.restore(&backup))
     }
 
+    fn try_parse_variable<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
+        try_consume(state, |t| t.data.try_get_identifier()).map(|name| {
+            UncheckedExpression::UVariable(
+                state.prev_token.range.clone(),
+                UncheckedVariable::UVariable(state.prev_token.range.clone(), name),
+            )
+        })
+    }
+
     fn try_parse_int_literal<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
         try_parse_number(state)
             .map(|n| UncheckedExpression::UIntLiteral(state.prev_token.range.clone(), n))
     }
 
     // All of the sub parsers reset state, so no need to do it here.
-    try_parse_binary(state).or_else(|| try_parse_int_literal(state))
+    try_parse_binary(state)
+        .or_else(|| try_parse_int_literal(state))
+        .or_else(|| try_parse_variable(state))
 }
 
 /// Tries to parse an assignment, will return None if the firstd keyword is not matched and fail if

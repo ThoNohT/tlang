@@ -180,6 +180,14 @@ pub mod check {
             UncheckedExpression::UIntLiteral(r, int_val) => {
                 CheckResult::perfect(Expression::IntLiteral(r.clone(), int_val.clone()))
             }
+            UncheckedExpression::UVariable(r, UncheckedVariable::UVariable(r2, name)) => {
+                get_variable_offset(r2, variables, false, name).map(|offset| {
+                    Expression::Variable(
+                        r.clone(),
+                        Variable::Variable(r2.clone(), offset, name.clone()),
+                    )
+                })
+            }
             UncheckedExpression::UBinary(r, op, ex_l, ex_r) => {
                 check_expression(strings, variables, ex_l).bind(|le| {
                     check_expression(strings, variables, ex_r).map(|re| {
@@ -223,15 +231,23 @@ pub mod check {
                     r1,
                     UncheckedVariable::UVariable(r2, name),
                     expr,
-                ) => get_variable_offset(&r2, variables, true, &name).bind(|offset| {
-                    check_expression(strings, variables, &expr).map(|e| {
-                        Statement::Assignment(
-                            r1.clone(),
-                            Variable::Variable(r2.clone(), offset, name.clone()),
-                            e,
-                        )
+                ) => {
+                    // Check expressio before variable so the variable is not yet known during
+                    // expression evaluation. But do check the variable even if expression fails
+                    // so it is known later.
+                    let expr = check_expression(strings, variables, &expr);
+                    let var_offset = get_variable_offset(&r2, variables, true, &name);
+
+                    expr.bind(|e| {
+                        var_offset.map(|o| {
+                            Statement::Assignment(
+                                r1.clone(),
+                                Variable::Variable(r2.clone(), o, name.clone()),
+                                e,
+                            )
+                        })
                     })
-                }),
+                }
             }
         }
 
