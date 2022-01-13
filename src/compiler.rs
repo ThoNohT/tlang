@@ -96,16 +96,17 @@ fn write_op(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, op: &Operator) {
 fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expression) {
     match expr {
         Expression::IntLiteral(_, int_val) => {
-            wl(
-                offset,
-                false,
-                format!("push {} ; Int literal.", int_val).as_str(),
-            );
+            wl(offset, true, "; Int literal.");
+            wl(offset, false, format!("push {}", int_val).as_str());
         }
         Expression::Variable(_, Variable::Variable(_, var_offset, name)) => {
             wl(offset, true, format!("; Variable {}.", name).as_str());
             wl(offset, false, "mov rax, mem");
-            wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
+            wl(
+                offset,
+                false,
+                format!("add rax, {}", var_offset * 8).as_str(),
+            );
             wl(offset, false, "mov rbx, [rax]");
             wl(offset, false, "push rbx");
         }
