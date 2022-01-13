@@ -301,7 +301,7 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
 
     fn try_parse_int_literal<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
         try_parse_number(state)
-            .map(|n| UncheckedExpression::UIntLiteral(state.current_token.range.clone(), n))
+            .map(|n| UncheckedExpression::UIntLiteral(state.prev_token.range.clone(), n))
     }
 
     // All of the sub parsers reset state, so no need to do it here.
