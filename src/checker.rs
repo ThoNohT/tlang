@@ -79,8 +79,11 @@ impl<T: Clone> CheckResult<T> {
     }
 }
 
+/// The string indexes known throughout the program.
 type StringIndexes = HashMap<String, usize>;
-type VariableOffsets = HashMap<String, usize>;
+
+/// The variable offsets known in the current scope, and the offset to use for the next variable.
+type VariableOffsets = (HashMap<String, usize>, usize);
 
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
@@ -104,7 +107,7 @@ fn get_variable_offset<'a>(
     assign: bool,
     name: &String,
 ) -> CheckResult<usize> {
-    if let Some(idx) = variables.get(name) {
+    if let Some(idx) = variables.0.get(name) {
         if !assign {
             CheckResult::Checked(idx.clone(), Vec::new())
         } else {
@@ -115,9 +118,10 @@ fn get_variable_offset<'a>(
             )]))
         }
     } else if assign {
-        let idx = variables.len();
-        variables.insert(name.clone(), idx);
-        CheckResult::Checked(idx, Vec::new())
+        variables.0.insert(name.clone(), variables.1);
+        let result = CheckResult::Checked(variables.1, Vec::new());
+        variables.1 += 8;
+        result
     } else {
         CheckResult::Failed(Vec::from([CheckIssue::CheckError(
             range.clone(),
@@ -131,7 +135,7 @@ pub mod check {
     use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
     use crate::project::project::*;
     use crate::project::unchecked_project::*;
-    use std::collections::{HashSet, VecDeque};
+    use std::collections::{HashMap, HashSet, VecDeque};
 
     fn unused_subs(program: &UncheckedProgram) -> HashSet<SubroutineName> {
         let subroutines = program.subroutines();
@@ -224,10 +228,15 @@ pub mod check {
             match top_stmt {
                 UncheckedTopLevelStatement::USubroutine(r, name, stmts) => {
                     let mut checked_stmts = Vec::new();
-                    let mut local_variables = VariableOffsets::new();
+
+                    // Allocate variables after the global variables.
+                    let mut local_variables: VariableOffsets = (HashMap::new(), variables.1);
                     for stmt in stmts.iter() {
                         checked_stmts.push(check_stmt(strings, &mut local_variables, stmt));
                     }
+
+                    // Continue allocating after the variables of this subroutine.
+                    variables.1 = local_variables.1;
 
                     let issues = checked_stmts.iter().flat_map(CheckResult::issues).collect();
                     let failed = checked_stmts.iter().map(CheckResult::is_failed).any(|x| x);
@@ -246,7 +255,7 @@ pub mod check {
         }
 
         let mut strings = StringIndexes::new();
-        let mut variables = VariableOffsets::new();
+        let mut variables = (HashMap::new(), 0);
 
         // Check and convert each statement one by one.
         let mut stmts: Vec<CheckResult<TopLevelStatement>> = Vec::new();
@@ -263,7 +272,7 @@ pub mod check {
                     range: program.range.clone(),
                     stmts: new_stmts,
                     strings,
-                    variables,
+                    variables: variables.0,
                 },
                 issues,
             )
