@@ -14,7 +14,7 @@ endif
 syntax keyword tlangTodo TODO
 
 " Language keywords.
-syntax keyword tlangKeyword Executable let call print
+syntax keyword tlangKeyword Executable let call print return
 
 " Comments.
 syntax region tlangLineComment start="//" end="$" contains=tlangTodos
