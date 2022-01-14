@@ -116,7 +116,9 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
             wl(1, true, format!("; PrintStr {}.", asm_encode_string(str)).as_str());
             wl(1, false, format!("mov rsi, txt_{}", idx).as_str());
             wl(1, false, format!("mov rdx, {}", str.len()).as_str());
-            wl(1, false, "call _PrintStr");
+            wl(1, false, "mov rax, 1");
+            wl(1, false, "mov rdi, 1");
+            wl(1, false, "syscall");
         }
         Statement::PrintExpr(_, expr) => {
             wl(1, true, "; PrintExpr {}.");
@@ -193,13 +195,6 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(1, false, "mov rdi, 0");
     wl(1, false, "syscall");
     wl(0, false, "");
-
-    wl(0, false, "_PrintStr:");
-    wl(1, true, "; PrintStr helper. Assumes rsi and rdx have been set before calling.");
-    wl(1, false, "mov rax, 1");
-    wl(1, false, "mov rdi, 1");
-    wl(1, false, "syscall");
-    wl(1, false, "ret");
 
     write_print_int_64(&mut wl);
     wl(0, true, "");
