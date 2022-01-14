@@ -195,10 +195,8 @@ pub mod check {
                         StringLiteral::StringLiteral(r2.clone(), idx, str.clone()),
                     ))
                 }
-                UncheckedStatement::UPrintVar(r1, UncheckedVariable::UVariable(r2, name)) => {
-                    get_variable_offset(&r2, variables, false, &name).map(|offset| {
-                        Statement::PrintVar(r1.clone(), Variable::Variable(r2.clone(), offset, name.clone()))
-                    })
+                UncheckedStatement::UPrintExpr(r1, expr) => {
+                    check_expression(strings, variables, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
                 }
                 UncheckedStatement::UCall(r, name) => CheckResult::perfect(Statement::Call(r.clone(), name.clone())),
 

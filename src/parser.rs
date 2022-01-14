@@ -108,7 +108,7 @@ fn consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>, label:
 
 /// Consumes an end of line token.
 fn consume_eol<'a>(state: &'a mut ParserState, label: &str) {
-    check_and_next(state, |t| t.data == TokenData::EndOfLineToken(), format!("{} ws", label).as_str());
+    check_and_next(state, |t| t.data == TokenData::EndOfLineToken(), format!("{} eol", label).as_str());
 }
 
 /// Consumes one or more end of line tokens. All but the first may be prefixed by indentation
@@ -162,22 +162,16 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
     state.next();
 
     let id_range = &state.current_token.range;
-    let str_lit = state
-        .current_token
-        .data
-        .try_get_string_literal()
+    let str_lit = try_consume(state, |t| t.data.try_get_string_literal())
         .map(|t| UncheckedStringLiteral::UStringLiteral(id_range.clone(), t));
-    let var_name =
-        state.current_token.data.try_get_identifier().map(|t| UncheckedVariable::UVariable(id_range.clone(), t));
+    let expression = try_parse_expression(state);
 
-    state.next();
-
-    match (str_lit, var_name) {
+    match (str_lit, expression) {
         (Some(sl), _) => Some(UncheckedStatement::UPrintStr(Range::from_ranges(start_token, id_range), sl)),
-        (_, Some(vn)) => Some(UncheckedStatement::UPrintVar(Range::from_ranges(start_token, id_range), vn)),
+        (_, Some(expr)) => Some(UncheckedStatement::UPrintExpr(Range::from_ranges(start_token, id_range), expr)),
         _ => {
             let msg = format!(
-                "Error parsing a print  statement, expected a {} or {}, but got {}.",
+                "Error parsing a print statement, expected a {} or {}, but got {}.",
                 TokenData::StringLiteralToken("".to_string()).to_string(false),
                 TokenData::IdentifierToken("".to_string()).to_string(false),
                 state.current_token.data.to_string(true)
@@ -284,8 +278,8 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
     ))
 }
 
-/// Checks that  the next token is indented to the specified indent level.
-/// For an indent level of 0, it is checked that  the next token is not an indent token, and no
+/// Checks that the next token is indented to the specified indent level.
+/// For an indent level of 0, it is checked that the next token is not an indent token, and no
 /// tokens are consumed.
 /// If the next token is the desired indent token (greater than 0), it is consumed, otherwise
 /// nothing is consumed.

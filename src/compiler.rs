@@ -118,11 +118,10 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
             wl(1, false, format!("mov rdx, {}", str.len()).as_str());
             wl(1, false, "call _PrintStr");
         }
-        Statement::PrintVar(_, Variable::Variable(_, offset, name)) => {
-            wl(1, true, format!("; PrintVar {}.", name).as_str());
-            wl(1, false, "mov rax, mem");
-            wl(1, false, format!("add rax, {}", offset * 8).as_str());
-            wl(1, false, "mov rdi, [rax]");
+        Statement::PrintExpr(_, expr) => {
+            wl(1, true, "; PrintExpr {}.");
+            write_expression(wl, 2, expr);
+            wl(1, false, "pop rdi");
             wl(1, false, "call _PrintInt64");
         }
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
@@ -144,7 +143,7 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
 
 /// Writes a subroutine, given a writing function.
 /// These are handled in a separate function, since they need to be after all
-/// regular  statements.
+/// regular statements.
 fn write_subroutine(wl: &mut dyn FnMut(u8, bool, &str), sub: &TopLevelStatement) {
     match sub {
         TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {

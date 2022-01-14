@@ -51,8 +51,8 @@ pub mod project {
     pub enum Statement {
         /// Print a string to stdout.
         PrintStr(Range, StringLiteral),
-        /// Print the i64 value in a variable.
-        PrintVar(Range, Variable),
+        /// Print the i64 value in an expression.
+        PrintExpr(Range, Expression),
         /// Call a subroutine.
         Call(Range, SubroutineName),
         /// Assign an expression to a variable.
@@ -143,7 +143,7 @@ pub mod unchecked_project {
     #[derive(Clone, Debug)]
     pub enum UncheckedStatement {
         UPrintStr(Range, UncheckedStringLiteral),
-        UPrintVar(Range, UncheckedVariable),
+        UPrintExpr(Range, UncheckedExpression),
         UCall(Range, SubroutineName),
         UAssignment(Range, UncheckedVariable, UncheckedExpression),
     }
@@ -166,7 +166,7 @@ pub mod unchecked_project {
         pub fn range(self: &Self) -> &Range {
             match self {
                 Self::UPrintStr(range, _) => range,
-                Self::UPrintVar(range, _) => range,
+                Self::UPrintExpr(range, _) => range,
                 Self::UCall(range, _) => range,
                 Self::UAssignment(range, _, _) => range,
             }
