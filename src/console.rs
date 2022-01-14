@@ -171,27 +171,18 @@ pub fn test_condition(condition: bool, error: &str) {
 /// If the command fails, the output from stderr is returned and the program exits.
 pub fn run_cmd_echoed(args: Vec<&str>) {
     println!("{}", args.join(" "));
-    let output = Command::new(args[0])
-        .args(args[1..].iter())
-        .output()
-        .map_err(|e| format!("{}", e))
-        .handle_with_exit(None);
+    let output =
+        Command::new(args[0]).args(args[1..].iter()).output().map_err(|e| format!("{}", e)).handle_with_exit(None);
     let code = output.status.code();
 
     if None == code {
         e_red!("Command was terminated by a signal.\n");
-        e_red!(
-            "{}\n",
-            str::from_utf8(&output.stderr).handle_with_exit(None)
-        );
+        e_red!("{}\n", str::from_utf8(&output.stderr).handle_with_exit(None));
         exit(1);
     } else if let Some(c) = code {
         if c != 0 {
             e_red!("Command exited with status {}.\n", c);
-            e_red!(
-                "{}\n",
-                str::from_utf8(&output.stderr).handle_with_exit(None)
-            );
+            e_red!("{}\n", str::from_utf8(&output.stderr).handle_with_exit(None));
             exit(1);
         }
     }

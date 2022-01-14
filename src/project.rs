@@ -95,17 +95,11 @@ pub mod project {
 
     impl Program {
         pub fn subroutines(self: &Self) -> Vec<TopLevelStatement> {
-            self.stmts
-                .iter()
-                .filter_map(|s| s.subroutine())
-                .collect::<Vec<TopLevelStatement>>()
+            self.stmts.iter().filter_map(|s| s.subroutine()).collect::<Vec<TopLevelStatement>>()
         }
 
         pub fn statements(self: &Self) -> Vec<Statement> {
-            self.stmts
-                .iter()
-                .filter_map(|s| s.statement())
-                .collect::<Vec<Statement>>()
+            self.stmts.iter().filter_map(|s| s.statement()).collect::<Vec<Statement>>()
         }
     }
 
@@ -143,12 +137,7 @@ pub mod unchecked_project {
     pub enum UncheckedExpression {
         UIntLiteral(Range, i64),
         UVariable(Range, UncheckedVariable),
-        UBinary(
-            Range,
-            Operator,
-            Box<UncheckedExpression>,
-            Box<UncheckedExpression>,
-        ),
+        UBinary(Range, Operator, Box<UncheckedExpression>, Box<UncheckedExpression>),
     }
 
     #[derive(Clone, Debug)]
@@ -237,19 +226,14 @@ pub mod unchecked_project {
 
         /// Returns all top-level statements that are statements in the program.
         pub fn statements(self: &Self) -> Vec<UncheckedStatement> {
-            self.stmts
-                .iter()
-                .filter_map(UncheckedTopLevelStatement::statement)
-                .collect::<Vec<UncheckedStatement>>()
+            self.stmts.iter().filter_map(UncheckedTopLevelStatement::statement).collect::<Vec<UncheckedStatement>>()
         }
 
         /// Returns all calls to subroutines that are made in the program.
         pub fn calls(self: &Self) -> Vec<UncheckedStatement> {
             let stmts = self.statements();
-            let mut direct_calls = stmts
-                .iter()
-                .filter_map(UncheckedStatement::call)
-                .collect::<Vec<UncheckedStatement>>();
+            let mut direct_calls =
+                stmts.iter().filter_map(UncheckedStatement::call).collect::<Vec<UncheckedStatement>>();
             let mut subroutine_statements = self
                 .subroutines()
                 .iter()

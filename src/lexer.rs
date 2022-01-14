@@ -36,12 +36,7 @@ pub struct Range {
 impl Range {
     /// Converts a range to a string that points to a the starting position of the range in its file.
     pub fn to_string(self: &Self) -> String {
-        format!(
-            "{}:{}:{}",
-            self.file,
-            self.start_line + 1,
-            self.start_col + 1,
-        )
+        format!("{}:{}:{}", self.file, self.start_line + 1, self.start_col + 1,)
     }
 
     /// Converts a range to a string that points to the starting and ending position of the range in its file.
@@ -346,11 +341,7 @@ pub mod lexer {
         /// as the end.
         fn add_token(self: &mut Self, data: TokenData) {
             let tkn = Token {
-                range: Range::from_positions(
-                    self.filename.to_string(),
-                    self.backup_pos.clone(),
-                    self.prev_pos.clone(),
-                ),
+                range: Range::from_positions(self.filename.to_string(), self.backup_pos.clone(), self.prev_pos.clone()),
                 whitespace_before: self.whitespace_before,
                 data: data.clone(),
             };
@@ -361,11 +352,7 @@ pub mod lexer {
         /// Can be used to check a predicate, and if it fails, exit with the specified error
         /// message, including some location data.
         fn check_lexer_predicate(self: &Self, pred: bool, msg: &str) {
-            let msg = format!(
-                "{}: Lexer error: {}",
-                self.pos.to_file_string(self.filename),
-                msg
-            );
+            let msg = format!("{}: Lexer error: {}", self.pos.to_file_string(self.filename), msg);
             crate::console::test_condition(pred, msg.as_str());
         }
     }
@@ -389,10 +376,8 @@ pub mod lexer {
                 // number of spaces per indent.
                 while !state.at_end_of_input && is_whitespace(state.cur_char) {
                     spi += 1;
-                    state.check_lexer_predicate(
-                        state.cur_char == ' ',
-                        "Leading whitespace may only consist of spaces.",
-                    );
+                    state
+                        .check_lexer_predicate(state.cur_char == ' ', "Leading whitespace may only consist of spaces.");
                     state.next_char();
                 }
 
@@ -405,10 +390,8 @@ pub mod lexer {
                 let mut n_spaces = 0;
                 while !state.at_end_of_input && is_whitespace(state.cur_char) {
                     n_spaces += 1;
-                    state.check_lexer_predicate(
-                        state.cur_char == ' ',
-                        "Leading whitespace may only consist of spaces.",
-                    );
+                    state
+                        .check_lexer_predicate(state.cur_char == ' ', "Leading whitespace may only consist of spaces.");
                     state.next_char();
                 }
 
@@ -435,10 +418,8 @@ pub mod lexer {
             nr_str.push(state.cur_char);
             state.next_char();
         }
-        let nr = nr_str
-            .parse::<i64>()
-            .map_err(|e| format!("{}", e))
-            .handle_with_exit(Some("Failed to parse a number."));
+        let nr =
+            nr_str.parse::<i64>().map_err(|e| format!("{}", e)).handle_with_exit(Some("Failed to parse a number."));
         state.add_token(TokenData::NumberToken(nr));
     }
 
@@ -570,11 +551,7 @@ pub mod lexer {
         }
     }
 
-    pub fn lex_file<'a, 'b>(
-        keywords: HashSet<&str>,
-        filename: &'a str,
-        input: &'a str,
-    ) -> Vec<Token> {
+    pub fn lex_file<'a, 'b>(keywords: HashSet<&str>, filename: &'a str, input: &'a str) -> Vec<Token> {
         // TODO: Grapheme clusters?
         let mut state = LexerState::new(input, filename);
 

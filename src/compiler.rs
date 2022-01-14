@@ -54,28 +54,17 @@ fn write_print_int_64(wl: &mut dyn FnMut(u8, bool, &str)) {
 
 /// Creates a string that is compatible with assembly.
 fn asm_encode_string(str: &str) -> String {
-    let (_, in_str, r) = str.chars().fold(
-        (true, false, String::new()),
-        |(first, prev_in_str, acc), c| {
-            // 32 to 126 is printable.
-            let now_in_str = c as u32 >= 32 && c as u32 <= 126;
-            let sep = !first && ((!now_in_str) || (now_in_str && !prev_in_str));
-            let prefix = if sep { "," } else { "" };
-            let start_quote = if !prev_in_str && now_in_str { "\"" } else { "" };
-            let end_quote = if prev_in_str && !now_in_str { "\"" } else { "" };
-            let c_ = if now_in_str {
-                c.to_string()
-            } else {
-                format!(" {}", c as u32)
-            };
+    let (_, in_str, r) = str.chars().fold((true, false, String::new()), |(first, prev_in_str, acc), c| {
+        // 32 to 126 is printable.
+        let now_in_str = c as u32 >= 32 && c as u32 <= 126;
+        let sep = !first && ((!now_in_str) || (now_in_str && !prev_in_str));
+        let prefix = if sep { "," } else { "" };
+        let start_quote = if !prev_in_str && now_in_str { "\"" } else { "" };
+        let end_quote = if prev_in_str && !now_in_str { "\"" } else { "" };
+        let c_ = if now_in_str { c.to_string() } else { format!(" {}", c as u32) };
 
-            return (
-                false,
-                now_in_str,
-                format!("{}{}{}{}{}", acc, end_quote, prefix, start_quote, c_),
-            );
-        },
-    );
+        return (false, now_in_str, format!("{}{}{}{}{}", acc, end_quote, prefix, start_quote, c_));
+    });
     return if in_str { format!("{}\"", r) } else { r };
 }
 
@@ -102,11 +91,7 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
         Expression::Variable(_, Variable::Variable(_, var_offset, name)) => {
             wl(offset, true, format!("; Variable {}.", name).as_str());
             wl(offset, false, "mov rax, mem");
-            wl(
-                offset,
-                false,
-                format!("add rax, {}", var_offset * 8).as_str(),
-            );
+            wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
             wl(offset, false, "mov rbx, [rax]");
             wl(offset, false, "push rbx");
         }
@@ -124,16 +109,11 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
     }
 }
 
-// TODO: Customize Rust code formatter?
 /// Writes a statement, given a writing function.
 fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
     match stmt {
         Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
-            wl(
-                1,
-                true,
-                format!("; PrintStr {}.", asm_encode_string(str)).as_str(),
-            );
+            wl(1, true, format!("; PrintStr {}.", asm_encode_string(str)).as_str());
             wl(1, false, format!("mov rsi, txt_{}", idx).as_str());
             wl(1, false, format!("mov rdx, {}", str.len()).as_str());
             wl(1, false, "call _PrintStr");
@@ -182,19 +162,13 @@ fn write_subroutine(wl: &mut dyn FnMut(u8, bool, &str), sub: &TopLevelStatement)
 /// Writes the p roject to x86_64 linux assembly for fasm.
 pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSet<BuildFlag>) {
     let pretty_print = BuildFlag::PrettyPrintAsm.active(flags);
-    let mut file = File::create(file_name)
-        .map_err(|_| "Failed to create the file.".to_string())
-        .handle_with_exit(None);
+    let mut file = File::create(file_name).map_err(|_| "Failed to create the file.".to_string()).handle_with_exit(None);
 
     let mut wl = |indent: u8, pp: bool, line: &str| {
         if pp && !pretty_print {
             return;
         }
-        let indent_ = if !pretty_print && indent > 1 {
-            1
-        } else {
-            indent
-        };
+        let indent_ = if !pretty_print && indent > 1 { 1 } else { indent };
         let indent_str = (0..indent_ * 4).map(|_| " ").collect::<String>();
         writeln!(&mut file, "{}{}", indent_str, line)
             .map_err(|_| "Failed to write a line to the file.".to_string())
@@ -222,11 +196,7 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(0, false, "");
 
     wl(0, false, "_PrintStr:");
-    wl(
-        1,
-        true,
-        "; PrintStr helper. Assumes rsi and rdx have been set before calling.",
-    );
+    wl(1, true, "; PrintStr helper. Assumes rsi and rdx have been set before calling.");
     wl(1, false, "mov rax, 1");
     wl(1, false, "mov rdi, 1");
     wl(1, false, "syscall");
@@ -246,20 +216,12 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(0, false, "segment readable writable");
 
     for (str, idx) in program.strings.iter() {
-        wl(
-            1,
-            false,
-            format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str(),
-        );
+        wl(1, false, format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str());
     }
     wl(0, true, "");
 
     // Start of memory section.
     if !program.variables.is_empty() {
-        wl(
-            1,
-            false,
-            format!("mem: rb {}", program.variables.len() * 8).as_str(),
-        );
+        wl(1, false, format!("mem: rb {}", program.variables.len() * 8).as_str());
     }
 }

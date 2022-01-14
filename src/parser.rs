@@ -73,12 +73,7 @@ impl<'a> ParserState<'a> {
 /// If it succeeds, moves to the next token.
 fn check_and_next<'a>(state: &'a mut ParserState, f: fn(&Token) -> bool, label: &str) {
     let t = state.current_token;
-    let msg = format!(
-        "{}: Error parsing {}, unexpected {}.",
-        t.range.to_full_string(),
-        label,
-        t.data.to_string(true),
-    );
+    let msg = format!("{}: Error parsing {}, unexpected {}.", t.range.to_full_string(), label, t.data.to_string(true),);
     console::test_condition(f(t), msg.as_str());
     state.next();
 }
@@ -104,12 +99,8 @@ fn consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>, label:
     match f(t) {
         Some(v) => v,
         None => {
-            let msg = format!(
-                "{}: Error parsing {}, unexpected {}.",
-                t.range.to_string(),
-                label,
-                t.data.to_string(true)
-            );
+            let msg =
+                format!("{}: Error parsing {}, unexpected {}.", t.range.to_string(), label, t.data.to_string(true));
             console::return_with_error(msg.as_str())
         }
     }
@@ -117,11 +108,7 @@ fn consume<'a, T>(state: &'a mut ParserState, f: fn(&Token) -> Option<T>, label:
 
 /// Consumes an end of line token.
 fn consume_eol<'a>(state: &'a mut ParserState, label: &str) {
-    check_and_next(
-        state,
-        |t| t.data == TokenData::EndOfLineToken(),
-        format!("{} ws", label).as_str(),
-    );
+    check_and_next(state, |t| t.data == TokenData::EndOfLineToken(), format!("{} ws", label).as_str());
 }
 
 /// Consumes one or more end of line tokens. All but the first may be prefixed by indentation
@@ -131,11 +118,7 @@ fn consume_eols<'a>(state: &'a mut ParserState, label: &str) {
         let indented = state.current_token.data.is_indentation(); // Consume any indentation first.
 
         // Then check if there is an end of line token.
-        let t = if indented {
-            state.next_token
-        } else {
-            state.current_token
-        };
+        let t = if indented { state.next_token } else { state.current_token };
         if t.data != TokenData::EndOfLineToken() {
             return false;
         }
@@ -154,21 +137,9 @@ fn consume_eols<'a>(state: &'a mut ParserState, label: &str) {
 /// Parses a project type.
 fn parse_project_type<'a>(state: &'a mut ParserState) -> ProjectType {
     let start_range = &state.current_token.range;
-    check_and_next(
-        state,
-        |t: &Token| t.data == TokenData::KeywordToken("Executable".to_string()),
-        "project type",
-    );
-    check_and_next(
-        state,
-        |t: &Token| t.data == TokenData::SymbolToken(":".to_string()),
-        "project type",
-    );
-    let name = consume(
-        state,
-        |t: &Token| t.data.try_get_identifier(),
-        "project name",
-    );
+    check_and_next(state, |t: &Token| t.data == TokenData::KeywordToken("Executable".to_string()), "project type");
+    check_and_next(state, |t: &Token| t.data == TokenData::SymbolToken(":".to_string()), "project type");
+    let name = consume(state, |t: &Token| t.data.try_get_identifier(), "project name");
     let end_range = &state.prev_token.range;
     consume_eols(state, "project type");
     ProjectType::Executable(Range::from_ranges(start_range, end_range), name)
@@ -176,11 +147,7 @@ fn parse_project_type<'a>(state: &'a mut ParserState) -> ProjectType {
 
 /// Parses a separator between the project type definition and the program.
 fn parse_separator<'a>(state: &'a mut ParserState) {
-    check_and_next(
-        state,
-        |t: &Token| t.data == TokenData::SeparatorToken(),
-        "separator",
-    );
+    check_and_next(state, |t: &Token| t.data == TokenData::SeparatorToken(), "separator");
     consume_eols(state, "separator");
 }
 
@@ -200,23 +167,14 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
         .data
         .try_get_string_literal()
         .map(|t| UncheckedStringLiteral::UStringLiteral(id_range.clone(), t));
-    let var_name = state
-        .current_token
-        .data
-        .try_get_identifier()
-        .map(|t| UncheckedVariable::UVariable(id_range.clone(), t));
+    let var_name =
+        state.current_token.data.try_get_identifier().map(|t| UncheckedVariable::UVariable(id_range.clone(), t));
 
     state.next();
 
     match (str_lit, var_name) {
-        (Some(sl), _) => Some(UncheckedStatement::UPrintStr(
-            Range::from_ranges(start_token, id_range),
-            sl,
-        )),
-        (_, Some(vn)) => Some(UncheckedStatement::UPrintVar(
-            Range::from_ranges(start_token, id_range),
-            vn,
-        )),
+        (Some(sl), _) => Some(UncheckedStatement::UPrintStr(Range::from_ranges(start_token, id_range), sl)),
+        (_, Some(vn)) => Some(UncheckedStatement::UPrintVar(Range::from_ranges(start_token, id_range), vn)),
         _ => {
             let msg = format!(
                 "Error parsing a print  statement, expected a {} or {}, but got {}.",
@@ -239,11 +197,7 @@ fn try_parse_call<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> 
 
     state.next();
 
-    let sub_name = consume(
-        state,
-        |t| t.data.try_get_identifier(),
-        "call subroutine name",
-    );
+    let sub_name = consume(state, |t| t.data.try_get_identifier(), "call subroutine name");
     Some(UncheckedStatement::UCall(
         Range::from_ranges(start_range, &state.prev_token.range),
         SubroutineName::SubroutineName(state.prev_token.range.clone(), sub_name),
@@ -258,21 +212,16 @@ fn try_parse_number<'a>(state: &'a mut ParserState) -> Option<i64> {
         state.next();
     }
 
-    try_consume(state, |t| t.data.try_get_number())
-        .map(|n| if is_negative { -1 * n } else { n })
-        .or_do(|| {
-            state.restore(&backup);
-        })
+    try_consume(state, |t| t.data.try_get_number()).map(|n| if is_negative { -1 * n } else { n }).or_do(|| {
+        state.restore(&backup);
+    })
 }
 
 /// Tries to parse an operator.
 fn try_parse_operator<'a>(state: &'a mut ParserState) -> Option<Operator> {
-    try_consume(state, |c| c.data.try_get_symbol("+"))
-        .map(|_| Operator::Add(state.prev_token.range.clone()))
-        .or_else(|| {
-            try_consume(state, |c| c.data.try_get_symbol("-"))
-                .map(|_| Operator::Sub(state.prev_token.range.clone()))
-        })
+    try_consume(state, |c| c.data.try_get_symbol("+")).map(|_| Operator::Add(state.prev_token.range.clone())).or_else(
+        || try_consume(state, |c| c.data.try_get_symbol("-")).map(|_| Operator::Sub(state.prev_token.range.clone())),
+    )
 }
 
 /// Tries to parse an expression.
@@ -286,10 +235,7 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
                 try_parse_operator(state).bind(|op| {
                     try_parse_expression(state).map(|ex| {
                         UncheckedExpression::UBinary(
-                            Range::from_ranges(
-                                &backup.current_token.range.clone(),
-                                &state.current_token.range.clone(),
-                            ),
+                            Range::from_ranges(&backup.current_token.range.clone(), &state.current_token.range.clone()),
                             op,
                             Box::new(l),
                             Box::new(ex),
@@ -310,14 +256,11 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
     }
 
     fn try_parse_int_literal<'a>(state: &'a mut ParserState) -> Option<UncheckedExpression> {
-        try_parse_number(state)
-            .map(|n| UncheckedExpression::UIntLiteral(state.prev_token.range.clone(), n))
+        try_parse_number(state).map(|n| UncheckedExpression::UIntLiteral(state.prev_token.range.clone(), n))
     }
 
     // All of the sub parsers reset state, so no need to do it here.
-    try_parse_binary(state)
-        .or_else(|| try_parse_int_literal(state))
-        .or_else(|| try_parse_variable(state))
+    try_parse_binary(state).or_else(|| try_parse_int_literal(state)).or_else(|| try_parse_variable(state))
 }
 
 /// Tries to parse an assignment, will return None if the firstd keyword is not matched and fail if
@@ -331,18 +274,9 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
     state.next();
 
     let name_range = &state.current_token.range;
-    let name = consume(
-        state,
-        |t| t.data.try_get_identifier(),
-        "assignment variable",
-    );
-    check_and_next(
-        state,
-        |t| t.data == TokenData::SymbolToken("=".to_string()),
-        "assignment",
-    );
-    let expr = try_parse_expression(state)
-        .assert_some(|| console::return_with_error("Failed to parse an expression."));
+    let name = consume(state, |t| t.data.try_get_identifier(), "assignment variable");
+    check_and_next(state, |t| t.data == TokenData::SymbolToken("=".to_string()), "assignment");
+    let expr = try_parse_expression(state).assert_some(|| console::return_with_error("Failed to parse an expression."));
     Some(UncheckedStatement::UAssignment(
         Range::from_ranges(range_start, &state.prev_token.range),
         UncheckedVariable::UVariable(name_range.clone(), name),
@@ -372,10 +306,7 @@ fn check_indent<'a>(state: &'a mut ParserState, indent: usize) -> bool {
 /// Tries to parse a statement. This pa rser first checks whether the next token has the correct
 /// indentation, then applies onfe of the parsers for the specific statements. Consumes no tokens
 /// if the indentation is incorrect, or no statement was parsed.
-fn try_parse_statement<'a>(
-    state: &'a mut ParserState,
-    indent: usize,
-) -> Option<UncheckedStatement> {
+fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<UncheckedStatement> {
     let backup = state.backup();
 
     if !check_indent(state, indent) {
@@ -427,9 +358,7 @@ fn try_parse_subroutine<'a>(state: &'a mut ParserState) -> Option<UncheckedTopLe
 }
 
 /// Parses a top-level statement, which is either a subroutine, or a regular statement.
-fn try_parse_top_level_statement<'a>(
-    state: &'a mut ParserState,
-) -> Option<UncheckedTopLevelStatement> {
+fn try_parse_top_level_statement<'a>(state: &'a mut ParserState) -> Option<UncheckedTopLevelStatement> {
     try_parse_statement(state, 0)
         .map(|stmt| UncheckedTopLevelStatement::UStmt(stmt.range().clone(), stmt))
         .or_else(|| try_parse_subroutine(state))
@@ -467,14 +396,7 @@ pub fn parse_project<'a>(input: Vec<Token>) -> UncheckedProject {
     let project_type = parse_project_type(&mut state);
     parse_separator(&mut state);
     let program = parse_program(&mut state);
-    check_and_next(
-        &mut state,
-        |t: &Token| t.data == TokenData::EndOfInputToken(),
-        "project",
-    );
+    check_and_next(&mut state, |t: &Token| t.data == TokenData::EndOfInputToken(), "project");
 
-    UncheckedProject {
-        project_type,
-        program,
-    }
+    UncheckedProject { project_type, program }
 }

@@ -68,19 +68,11 @@ impl<T: Clone> CheckResult<T> {
             Self::Failed(issues) => CheckResult::Failed(issues.clone()),
             Self::Checked(v, issues) => match f(v.clone()) {
                 CheckResult::Failed(issues_) => CheckResult::Failed(
-                    issues
-                        .iter()
-                        .cloned()
-                        .chain(issues_.iter().cloned())
-                        .collect::<Vec<CheckIssue>>(),
+                    issues.iter().cloned().chain(issues_.iter().cloned()).collect::<Vec<CheckIssue>>(),
                 ),
                 CheckResult::Checked(r, issues_) => CheckResult::Checked(
                     r.clone(),
-                    issues
-                        .iter()
-                        .cloned()
-                        .chain(issues_.iter().cloned())
-                        .collect::<Vec<CheckIssue>>(),
+                    issues.iter().cloned().chain(issues_.iter().cloned()).collect::<Vec<CheckIssue>>(),
                 ),
             },
         }
@@ -143,10 +135,8 @@ pub mod check {
 
     fn unused_subs(program: &UncheckedProgram) -> HashSet<SubroutineName> {
         let subroutines = program.subroutines();
-        let mut unused = subroutines
-            .iter()
-            .filter_map(|s| s.name().map(|n| n.value().clone()))
-            .collect::<HashSet<String>>();
+        let mut unused =
+            subroutines.iter().filter_map(|s| s.name().map(|n| n.value().clone())).collect::<HashSet<String>>();
 
         let mut stmts_to_check = VecDeque::from(program.statements());
         while let Some(stmt) = stmts_to_check.pop_front() {
@@ -181,20 +171,13 @@ pub mod check {
                 CheckResult::perfect(Expression::IntLiteral(r.clone(), int_val.clone()))
             }
             UncheckedExpression::UVariable(r, UncheckedVariable::UVariable(r2, name)) => {
-                get_variable_offset(r2, variables, false, name).map(|offset| {
-                    Expression::Variable(
-                        r.clone(),
-                        Variable::Variable(r2.clone(), offset, name.clone()),
-                    )
-                })
+                get_variable_offset(r2, variables, false, name)
+                    .map(|offset| Expression::Variable(r.clone(), Variable::Variable(r2.clone(), offset, name.clone())))
             }
-            UncheckedExpression::UBinary(r, op, ex_l, ex_r) => {
-                check_expression(strings, variables, ex_l).bind(|le| {
-                    check_expression(strings, variables, ex_r).map(|re| {
-                        Expression::Binary(r.clone(), op.clone(), Box::new(le), Box::new(re))
-                    })
-                })
-            }
+            UncheckedExpression::UBinary(r, op, ex_l, ex_r) => check_expression(strings, variables, ex_l).bind(|le| {
+                check_expression(strings, variables, ex_r)
+                    .map(|re| Expression::Binary(r.clone(), op.clone(), Box::new(le), Box::new(re)))
+            }),
         }
     }
 
@@ -205,10 +188,7 @@ pub mod check {
             stmt: &UncheckedStatement,
         ) -> CheckResult<Statement> {
             match stmt {
-                UncheckedStatement::UPrintStr(
-                    r1,
-                    UncheckedStringLiteral::UStringLiteral(r2, str),
-                ) => {
+                UncheckedStatement::UPrintStr(r1, UncheckedStringLiteral::UStringLiteral(r2, str)) => {
                     let idx = get_string_idx(strings, &str);
                     CheckResult::perfect(Statement::PrintStr(
                         r1.clone(),
@@ -217,21 +197,12 @@ pub mod check {
                 }
                 UncheckedStatement::UPrintVar(r1, UncheckedVariable::UVariable(r2, name)) => {
                     get_variable_offset(&r2, variables, false, &name).map(|offset| {
-                        Statement::PrintVar(
-                            r1.clone(),
-                            Variable::Variable(r2.clone(), offset, name.clone()),
-                        )
+                        Statement::PrintVar(r1.clone(), Variable::Variable(r2.clone(), offset, name.clone()))
                     })
                 }
-                UncheckedStatement::UCall(r, name) => {
-                    CheckResult::perfect(Statement::Call(r.clone(), name.clone()))
-                }
+                UncheckedStatement::UCall(r, name) => CheckResult::perfect(Statement::Call(r.clone(), name.clone())),
 
-                UncheckedStatement::UAssignment(
-                    r1,
-                    UncheckedVariable::UVariable(r2, name),
-                    expr,
-                ) => {
+                UncheckedStatement::UAssignment(r1, UncheckedVariable::UVariable(r2, name), expr) => {
                     // Check expressio before variable so the variable is not yet known during
                     // expression evaluation. But do check the variable even if expression fails
                     // so it is known later.
@@ -240,11 +211,7 @@ pub mod check {
 
                     expr.bind(|e| {
                         var_offset.map(|o| {
-                            Statement::Assignment(
-                                r1.clone(),
-                                Variable::Variable(r2.clone(), o, name.clone()),
-                                e,
-                            )
+                            Statement::Assignment(r1.clone(), Variable::Variable(r2.clone(), o, name.clone()), e)
                         })
                     })
                 }
@@ -268,20 +235,15 @@ pub mod check {
                     let failed = checked_stmts.iter().map(CheckResult::is_failed).any(|x| x);
 
                     if !failed {
-                        let new_stmts = checked_stmts
-                            .iter()
-                            .filter_map(CheckResult::value)
-                            .collect();
-                        CheckResult::Checked(
-                            TopLevelStatement::Subroutine(r.clone(), name.clone(), new_stmts),
-                            issues,
-                        )
+                        let new_stmts = checked_stmts.iter().filter_map(CheckResult::value).collect();
+                        CheckResult::Checked(TopLevelStatement::Subroutine(r.clone(), name.clone(), new_stmts), issues)
                     } else {
                         CheckResult::Failed(issues)
                     }
                 }
-                UncheckedTopLevelStatement::UStmt(r, stmt) => check_stmt(strings, variables, stmt)
-                    .map(|s| TopLevelStatement::Stmt(r.clone(), s)),
+                UncheckedTopLevelStatement::UStmt(r, stmt) => {
+                    check_stmt(strings, variables, stmt).map(|s| TopLevelStatement::Stmt(r.clone(), s))
+                }
             }
         }
 
@@ -316,20 +278,11 @@ pub mod check {
     pub fn check(project: UncheckedProject) -> CheckResult<Project> {
         let prog = project.program;
 
-        let call_names = prog
-            .calls()
-            .iter()
-            .filter_map(|s| s.name().map(|n| n.value().clone()))
-            .collect::<HashSet<String>>();
-        let sub_names = prog
-            .subroutines()
-            .iter()
-            .filter_map(|s| s.name().map(|n| n.value().clone()))
-            .collect();
+        let call_names =
+            prog.calls().iter().filter_map(|s| s.name().map(|n| n.value().clone())).collect::<HashSet<String>>();
+        let sub_names = prog.subroutines().iter().filter_map(|s| s.name().map(|n| n.value().clone())).collect();
 
-        let undefined_calls = call_names
-            .difference(&sub_names)
-            .collect::<HashSet<&String>>();
+        let undefined_calls = call_names.difference(&sub_names).collect::<HashSet<&String>>();
 
         let mut call_errors = prog
             .calls()
