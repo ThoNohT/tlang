@@ -121,7 +121,7 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
             wl(1, false, "syscall");
         }
         Statement::PrintExpr(_, expr) => {
-            wl(1, true, "; PrintExpr {}.");
+            wl(1, true, "; PrintExpr.");
             write_expression(wl, 2, expr);
             wl(1, false, "pop rdi");
             wl(1, false, "call _PrintInt64");
