@@ -109,6 +109,13 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
     }
 }
 
+fn write_assignment(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assmt: &Assignment) {
+    match assmt {
+        Assignment::ExprAssignment(_, expr) => write_expression(wl, offset, expr),
+        Assignment::BlockAssignment(_, _) => unimplemented!("Block assignments are not implemented yet."),
+    }
+}
+
 /// Writes a statement, given a writing function.
 fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
     match stmt {
@@ -129,9 +136,9 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
             wl(1, false, format!("call __{}", name).as_str());
         }
-        Statement::Assignment(_, Variable::Variable(_, offset, name), expr) => {
+        Statement::Assignment(_, Variable::Variable(_, offset, name), assmt) => {
             wl(1, true, format!("; Assignment {}.", name).as_str());
-            write_expression(wl, 2, expr);
+            write_assignment(wl, 2, assmt);
             wl(1, false, "pop rbx");
             // Put address offset from mem in rax
             wl(1, false, "mov rax, mem");
@@ -139,6 +146,7 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
             // Store value of rbx in address at rax.
             wl(1, false, "mov [rax], rbx");
         }
+        Statement::Return(_, _) => unimplemented!("Return statements are not implemented yet."),
     }
     wl(0, true, "");
 }

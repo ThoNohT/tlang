@@ -33,7 +33,7 @@ fn read_file(file_name: &str) -> console::AppResult<String> {
 fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
     let input = read_file(format!("{}", file_name).as_str()).handle_with_exit(Some("Error reading source file."));
 
-    let keywords = HashSet::from(["Executable", "let", "call", "print"]);
+    let keywords = HashSet::from(["Executable", "let", "call", "print", "return"]);
 
     let tokens = crate::lexer::lexer::lex_file(keywords, file_name, &input);
 

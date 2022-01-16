@@ -185,41 +185,96 @@ pub mod check {
         }
     }
 
-    fn check_program(program: &UncheckedProgram) -> CheckResult<Program> {
-        fn check_stmt(
-            strings: &mut StringIndexes,
-            variables: &mut VariableOffsets,
-            stmt: &UncheckedStatement,
-        ) -> CheckResult<Statement> {
-            match stmt {
-                UncheckedStatement::UPrintStr(r1, UncheckedStringLiteral::UStringLiteral(r2, str)) => {
-                    let idx = get_string_idx(strings, &str);
-                    CheckResult::perfect(Statement::PrintStr(
-                        r1.clone(),
-                        StringLiteral::StringLiteral(r2.clone(), idx, str.clone()),
-                    ))
-                }
-                UncheckedStatement::UPrintExpr(r1, expr) => {
-                    check_expression(strings, variables, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
-                }
-                UncheckedStatement::UCall(r, name) => CheckResult::perfect(Statement::Call(r.clone(), name.clone())),
+    fn check_assignment(
+        strings: &mut StringIndexes,
+        variables: &mut VariableOffsets,
+        assmt: &UncheckedAssignment,
+    ) -> CheckResult<Assignment> {
+        match assmt {
+            UncheckedAssignment::UExprAssignment(r, expr) => {
+                check_expression(strings, variables, expr).map(|e| Assignment::ExprAssignment(r.clone(), e))
+            }
+            UncheckedAssignment::UBlockAssignment(r, stmts) => {
+                let mut checked_stmts = Vec::new();
 
-                UncheckedStatement::UAssignment(r1, UncheckedVariable::UVariable(r2, name), expr) => {
-                    // Check expressio before variable so the variable is not yet known during
-                    // expression evaluation. But do check the variable even if expression fails
-                    // so it is known later.
-                    let expr = check_expression(strings, variables, &expr);
-                    let var_offset = get_variable_offset(&r2, variables, true, &name);
+                // Allocate variables after the global variables.
+                let mut local_variables: VariableOffsets = (HashMap::new(), variables.1);
+                for stmt in stmts.iter() {
+                    checked_stmts.push(check_stmt(strings, &mut local_variables, stmt));
+                }
 
-                    expr.bind(|e| {
-                        var_offset.map(|o| {
-                            Statement::Assignment(r1.clone(), Variable::Variable(r2.clone(), o, name.clone()), e)
-                        })
-                    })
+                // Continue allocating after the variables of this block.
+                variables.1 = local_variables.1;
+
+                let mut issues: Vec<CheckIssue> = checked_stmts.iter().flat_map(CheckResult::issues).collect();
+
+                // TODO: When types are introduced, all returns need to be the same type.
+                // The last expression has to be a return expression.
+                let last_stmt = checked_stmts.last().map(|e| e.value()).flatten();
+                match last_stmt {
+                    None => {
+                        issues.push(CheckIssue::CheckError(
+                            r.clone(),
+                            "A block assignment needs at least one statement.".to_string(),
+                        ));
+                    }
+                    Some(Statement::Return(_, _)) => {}
+                    Some(stmt) => {
+                        issues.push(CheckIssue::CheckError(
+                            stmt.range(),
+                            "The last statement of a block assignment needs to be a return.".to_string(),
+                        ));
+                    }
+                }
+
+                let failed = checked_stmts.iter().map(CheckResult::is_failed).any(|x| x);
+
+                if !failed {
+                    let new_stmts = checked_stmts.iter().filter_map(CheckResult::value).collect();
+                    CheckResult::Checked(Assignment::BlockAssignment(r.clone(), new_stmts), issues)
+                } else {
+                    CheckResult::Failed(issues)
                 }
             }
         }
+    }
 
+    fn check_stmt(
+        strings: &mut StringIndexes,
+        variables: &mut VariableOffsets,
+        stmt: &UncheckedStatement,
+    ) -> CheckResult<Statement> {
+        match stmt {
+            UncheckedStatement::UPrintStr(r1, UncheckedStringLiteral::UStringLiteral(r2, str)) => {
+                let idx = get_string_idx(strings, &str);
+                CheckResult::perfect(Statement::PrintStr(
+                    r1.clone(),
+                    StringLiteral::StringLiteral(r2.clone(), idx, str.clone()),
+                ))
+            }
+            UncheckedStatement::UPrintExpr(r1, expr) => {
+                check_expression(strings, variables, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
+            }
+            UncheckedStatement::UCall(r, name) => CheckResult::perfect(Statement::Call(r.clone(), name.clone())),
+            UncheckedStatement::UAssignment(r1, UncheckedVariable::UVariable(r2, name), expr) => {
+                // Check assignment before variable so the variable is not yet known during
+                // assignment evaluation. But do check the variable even if assignment fails
+                // so it is known later.
+                let asmt = check_assignment(strings, variables, &expr);
+                let var_offset = get_variable_offset(&r2, variables, true, &name);
+
+                asmt.bind(|a| {
+                    var_offset
+                        .map(|o| Statement::Assignment(r1.clone(), Variable::Variable(r2.clone(), o, name.clone()), a))
+                })
+            }
+            UncheckedStatement::UReturn(r, expr) => {
+                check_expression(strings, variables, expr).map(|e| Statement::Return(r.clone(), e))
+            }
+        }
+    }
+
+    fn check_program(program: &UncheckedProgram) -> CheckResult<Program> {
         fn check_top_lvl_stmt(
             strings: &mut StringIndexes,
             variables: &mut VariableOffsets,

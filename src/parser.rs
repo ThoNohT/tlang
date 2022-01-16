@@ -153,7 +153,7 @@ fn parse_separator<'a>(state: &'a mut ParserState) {
 
 /// Tries to pa rse a print statement, will return None if the first keyword is not matched and
 /// fail if anything later fails.
-fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> {
+fn try_parse_print_stmt<'a>(state: &'a mut ParserState) -> Option<(UncheckedStatement, bool)> {
     let start_token = &state.current_token.range;
     if state.current_token.data != TokenData::KeywordToken("print".to_string()) {
         return None;
@@ -167,8 +167,10 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
     let expression = try_parse_expression(state);
 
     match (str_lit, expression) {
-        (Some(sl), _) => Some(UncheckedStatement::UPrintStr(Range::from_ranges(start_token, id_range), sl)),
-        (_, Some(expr)) => Some(UncheckedStatement::UPrintExpr(Range::from_ranges(start_token, id_range), expr)),
+        (Some(sl), _) => Some((UncheckedStatement::UPrintStr(Range::from_ranges(start_token, id_range), sl), true)),
+        (_, Some(expr)) => {
+            Some((UncheckedStatement::UPrintExpr(Range::from_ranges(start_token, id_range), expr), true))
+        }
         _ => {
             let msg = format!(
                 "Error parsing a print statement, expected a {} or {}, but got {}.",
@@ -181,9 +183,9 @@ fn try_parse_print<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement>
     }
 }
 
-/// Tries to parse a call, will return None if the first keyword is not matched and fail if
+/// Tries to parse a call statement, will return None if the first keyword is not matched and fail if
 /// anything later fails.
-fn try_parse_call<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> {
+fn try_parse_call_stmt<'a>(state: &'a mut ParserState) -> Option<(UncheckedStatement, bool)> {
     let start_range = &state.current_token.range;
     if state.current_token.data != TokenData::KeywordToken("call".to_string()) {
         return None;
@@ -192,9 +194,12 @@ fn try_parse_call<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> 
     state.next();
 
     let sub_name = consume(state, |t| t.data.try_get_identifier(), "call subroutine name");
-    Some(UncheckedStatement::UCall(
-        Range::from_ranges(start_range, &state.prev_token.range),
-        SubroutineName::SubroutineName(state.prev_token.range.clone(), sub_name),
+    Some((
+        UncheckedStatement::UCall(
+            Range::from_ranges(start_range, &state.prev_token.range),
+            SubroutineName::SubroutineName(state.prev_token.range.clone(), sub_name),
+        ),
+        true,
     ))
 }
 
@@ -257,9 +262,31 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
     try_parse_binary(state).or_else(|| try_parse_int_literal(state)).or_else(|| try_parse_variable(state))
 }
 
-/// Tries to parse an assignment, will return None if the firstd keyword is not matched and fail if
+/// Tries to parse an assignment, which can be either directly an expression, or a block of
+/// statements. Will return none if parsing the expression failed, or the block start was not
+/// matched (end of line). Block statements will be parsed as long as the indentation is correct.
+fn try_parse_assignment<'a>(state: &'a mut ParserState, indent: usize) -> Option<(UncheckedAssignment, bool)> {
+    if state.current_token.data == TokenData::EndOfLineToken() {
+        consume_eol(state, "block assignment");
+        let range_start = &state.current_token.range;
+
+        let mut stmts = Vec::<UncheckedStatement>::new();
+        while let Some(stmt) = try_parse_statement(state, indent + 1) {
+            stmts.push(stmt);
+        }
+
+        Some((
+            UncheckedAssignment::UBlockAssignment(Range::from_ranges(range_start, &state.prev_token.range), stmts),
+            false,
+        ))
+    } else {
+        try_parse_expression(state).map(|e| (UncheckedAssignment::UExprAssignment(e.get_range(), e), true))
+    }
+}
+
+/// Tries to parse an assignment statement, will return None if the first keyword is not matched and fail if
 /// anything later fails.
-fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedStatement> {
+fn try_parse_assignment_stmt<'a>(state: &'a mut ParserState, indent: usize) -> Option<(UncheckedStatement, bool)> {
     let range_start = &state.current_token.range;
     if state.current_token.data != TokenData::KeywordToken("let".to_string()) {
         return None;
@@ -270,12 +297,32 @@ fn try_parse_assignment<'a>(state: &'a mut ParserState) -> Option<UncheckedState
     let name_range = &state.current_token.range;
     let name = consume(state, |t| t.data.try_get_identifier(), "assignment variable");
     check_and_next(state, |t| t.data == TokenData::SymbolToken("=".to_string()), "assignment");
-    let expr = try_parse_expression(state).assert_some(|| console::return_with_error("Failed to parse an expression."));
-    Some(UncheckedStatement::UAssignment(
-        Range::from_ranges(range_start, &state.prev_token.range),
-        UncheckedVariable::UVariable(name_range.clone(), name),
-        expr,
+
+    let (assmt, eols) = try_parse_assignment(state, indent)
+        .assert_some(|| console::return_with_error("Failed to parse an assignment."));
+    Some((
+        UncheckedStatement::UAssignment(
+            Range::from_ranges(range_start, &state.prev_token.range),
+            UncheckedVariable::UVariable(name_range.clone(), name),
+            assmt,
+        ),
+        eols,
     ))
+}
+
+/// Tries to parse a return statement, will return None if the first token is not a return keyword,
+/// and fail if anything later fails.
+fn try_parse_return_stmt<'a>(state: &'a mut ParserState) -> Option<(UncheckedStatement, bool)> {
+    let range_start = &state.current_token.range;
+    if state.current_token.data != TokenData::KeywordToken("return".to_string()) {
+        return None;
+    }
+
+    state.next();
+
+    try_parse_expression(state)
+        .map(|e| Some((UncheckedStatement::UReturn(Range::from_ranges(range_start, &state.prev_token.range), e), true)))
+        .assert_some(|| console::return_with_error("Failed to parse a return expression"))
 }
 
 /// Checks that the next token is indented to the specified indent level.
@@ -307,14 +354,18 @@ fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<
         return None;
     }
 
-    try_parse_print(state)
-        .or_else(|| try_parse_call(state))
-        .or_else(|| try_parse_assignment(state))
+    try_parse_print_stmt(state)
+        .or_else(|| try_parse_call_stmt(state))
+        .or_else(|| try_parse_assignment_stmt(state, indent))
+        .or_else(|| try_parse_return_stmt(state))
         .or_do(|| {
+            println!("No statement matched.");
             state.restore(&backup);
         })
-        .map(|s| {
-            consume_eols(state, "statement");
+        .map(|(s, eols)| {
+            if eols {
+                consume_eols(state, "statement");
+            }
             s
         })
 }

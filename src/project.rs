@@ -46,6 +46,14 @@ pub mod project {
         Binary(Range, Operator, Box<Expression>, Box<Expression>),
     }
 
+    /// An assignment to a variable can be done either using a simple expression, or with a block
+    /// of statements ending with a Return statement.
+    #[derive(Clone, Debug)]
+    pub enum Assignment {
+        ExprAssignment(Range, Expression),
+        BlockAssignment(Range, Vec<Statement>),
+    }
+
     /// A statement that can either happen on top level or in a subroutine.
     #[derive(Clone, Debug)]
     pub enum Statement {
@@ -56,7 +64,25 @@ pub mod project {
         /// Call a subroutine.
         Call(Range, SubroutineName),
         /// Assign an expression to a variable.
-        Assignment(Range, Variable, Expression),
+        /// TODO: currently, the end result of an assignment can always be stored in a variable,
+        // this will change once variable assignments can take parameters and they effectively become
+        // functions with or without parameters.
+        Assignment(Range, Variable, Assignment),
+        /// Return an expression from a function.
+        Return(Range, Expression),
+    }
+
+    impl Statement {
+        pub fn range(self: &Self) -> Range {
+            match self {
+                Self::PrintStr(range, _) => range,
+                Self::PrintExpr(range, _) => range,
+                Self::Call(range, _) => range,
+                Self::Assignment(range, _, _) => range,
+                Self::Return(range, _) => range,
+            }
+            .clone()
+        }
     }
 
     /// A statement that can only happen on the top level.
@@ -140,12 +166,30 @@ pub mod unchecked_project {
         UBinary(Range, Operator, Box<UncheckedExpression>, Box<UncheckedExpression>),
     }
 
+    impl UncheckedExpression {
+        pub fn get_range(self: &Self) -> Range {
+            match self {
+                Self::UIntLiteral(r, _) => r,
+                Self::UVariable(r, _) => r,
+                Self::UBinary(r, _, _, _) => r,
+            }
+            .clone()
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub enum UncheckedAssignment {
+        UExprAssignment(Range, UncheckedExpression),
+        UBlockAssignment(Range, Vec<UncheckedStatement>),
+    }
+
     #[derive(Clone, Debug)]
     pub enum UncheckedStatement {
         UPrintStr(Range, UncheckedStringLiteral),
         UPrintExpr(Range, UncheckedExpression),
         UCall(Range, SubroutineName),
-        UAssignment(Range, UncheckedVariable, UncheckedExpression),
+        UAssignment(Range, UncheckedVariable, UncheckedAssignment),
+        UReturn(Range, UncheckedExpression),
     }
 
     impl UncheckedStatement {
@@ -169,6 +213,7 @@ pub mod unchecked_project {
                 Self::UPrintExpr(range, _) => range,
                 Self::UCall(range, _) => range,
                 Self::UAssignment(range, _, _) => range,
+                Self::UReturn(range, _) => range,
             }
         }
     }
