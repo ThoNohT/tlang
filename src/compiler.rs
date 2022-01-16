@@ -109,44 +109,64 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
     }
 }
 
-fn write_assignment(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assmt: &Assignment) {
+/// Writes an assignment for a variable, given a writing function.
+fn write_assignment(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, variable: &Variable, assmt: &Assignment) {
     match assmt {
         Assignment::ExprAssignment(_, expr) => write_expression(wl, offset, expr),
-        Assignment::BlockAssignment(_, _) => unimplemented!("Block assignments are not implemented yet."),
+        Assignment::BlockAssignment(_, stmts) => {
+            // TODO: When assignments become lazy, change this into subroutines, and don't print
+            // them inline in the function, but separate in the list of subroutines.
+
+            let Variable::Variable(_, _, name) = variable;
+            wl(offset, true, format!("; Block assignment for {}", name.as_str()).as_str());
+            for stmt in stmts {
+                write_statement(wl, offset + 1, stmt);
+            }
+            wl(offset, true, format!("; End of block assignment for {}", name.as_str()).as_str());
+        }
     }
 }
 
 /// Writes a statement, given a writing function.
-fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), stmt: &Statement) {
+fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, stmt: &Statement) {
     match stmt {
         Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
-            wl(1, true, format!("; PrintStr {}.", asm_encode_string(str)).as_str());
-            wl(1, false, format!("mov rsi, txt_{}", idx).as_str());
-            wl(1, false, format!("mov rdx, {}", str.len()).as_str());
-            wl(1, false, "mov rax, 1");
-            wl(1, false, "mov rdi, 1");
-            wl(1, false, "syscall");
+            wl(offset, true, format!("; PrintStr {}.", asm_encode_string(str)).as_str());
+            wl(offset, false, format!("mov rsi, txt_{}", idx).as_str());
+            wl(offset, false, format!("mov rdx, {}", str.len()).as_str());
+            wl(offset, false, "mov rax, 1");
+            wl(offset, false, "mov rdi, 1");
+            wl(offset, false, "syscall");
         }
         Statement::PrintExpr(_, expr) => {
-            wl(1, true, "; PrintExpr.");
-            write_expression(wl, 2, expr);
-            wl(1, false, "pop rdi");
-            wl(1, false, "call _PrintInt64");
+            wl(offset, true, "; PrintExpr start.");
+            write_expression(wl, offset + 1, expr);
+            wl(offset, true, "; PrintExpr print call.");
+            wl(offset, false, "pop rdi");
+            wl(offset, false, "call _PrintInt64");
         }
         Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
-            wl(1, false, format!("call __{}", name).as_str());
+            wl(offset, false, format!("call __{}", name).as_str());
         }
-        Statement::Assignment(_, Variable::Variable(_, offset, name), assmt) => {
-            wl(1, true, format!("; Assignment {}.", name).as_str());
-            write_assignment(wl, 2, assmt);
-            wl(1, false, "pop rbx");
+        Statement::Assignment(_, var, assmt) => {
+            // TODO: Don't assign directly, but make a Variable expression a call to a subroutine
+            // that checks if it was assigned before, and calculates and assigns if not,
+            // and returns otherwise.
+            let Variable::Variable(_, var_offset, name) = var;
+            wl(offset, true, format!("; Assignment {} start.", name).as_str());
+            write_assignment(wl, offset + 1, var, assmt);
+            wl(offset, true, format!("; Assignment {} store.", name).as_str());
+            wl(offset, false, "pop rbx");
             // Put address offset from mem in rax
-            wl(1, false, "mov rax, mem");
-            wl(1, false, format!("add rax, {}", offset * 8).as_str());
+            wl(offset, false, "mov rax, mem");
+
+            wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
             // Store value of rbx in address at rax.
-            wl(1, false, "mov [rax], rbx");
+            wl(offset, false, "mov [rax], rbx");
         }
-        Statement::Return(_, _) => unimplemented!("Return statements are not implemented yet."),
+        Statement::Return(_, expr) => {
+            write_expression(wl, offset, &expr);
+        }
     }
     wl(0, true, "");
 }
@@ -159,7 +179,7 @@ fn write_subroutine(wl: &mut dyn FnMut(u8, bool, &str), sub: &TopLevelStatement)
         TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {
             wl(0, false, format!("__{}:", name).as_str());
             for stmt in stmts.iter() {
-                write_statement(wl, stmt);
+                write_statement(wl, 1, stmt);
             }
             wl(1, false, "ret");
             wl(0, true, "");
@@ -195,7 +215,7 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
 
     //Program statements.
     for stmt in program.statements().iter() {
-        write_statement(&mut wl, stmt);
+        write_statement(&mut wl, 1, stmt);
     }
 
     wl(1, true, "; Exit call.");
