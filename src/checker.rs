@@ -83,8 +83,8 @@ impl<T: Clone> CheckResult<T> {
 /// The string indexes known throughout the program.
 type StringIndexes = HashMap<String, usize>;
 
-/// The variable offsets known in the current scope, and the offset to use for the next variable.
-type VariableOffsets = (HashMap<String, usize>, usize);
+/// The variable offsets an indexes known in the current scope, and the offset to use for the next variable.
+type VariableOffsets = (HashMap<String, (usize, usize)>, usize);
 
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
@@ -107,10 +107,10 @@ fn get_variable_offset<'a>(
     variables: &'a mut VariableOffsets,
     assign: bool,
     name: &String,
-) -> CheckResult<usize> {
-    if let Some(idx) = variables.0.get(name) {
+) -> CheckResult<(usize, usize)> {
+    if let Some(idx_and_offset) = variables.0.get(name) {
         if !assign {
-            CheckResult::Checked(idx.clone(), Vec::new())
+            CheckResult::Checked(idx_and_offset.clone(), Vec::new())
         } else {
             println!("{} defined", name);
             CheckResult::Failed(Vec::from([CheckIssue::CheckError(
@@ -119,10 +119,10 @@ fn get_variable_offset<'a>(
             )]))
         }
     } else if assign {
-        variables.0.insert(name.clone(), variables.1);
-        let result = CheckResult::Checked(variables.1, Vec::new());
+        let result = (variables.0.keys().len(), variables.1);
+        variables.0.insert(name.clone(), result);
         variables.1 += 8;
-        result
+        CheckResult::perfect(result)
     } else {
         CheckResult::Failed(Vec::from([CheckIssue::CheckError(
             range.clone(),
@@ -136,11 +136,12 @@ pub mod check {
     use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
     use crate::project::project::*;
     use crate::project::unchecked_project::*;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
 
     fn check_expression(
         strings: &mut StringIndexes,
         variables: &mut VariableOffsets,
+        ctx: &mut VecDeque<String>,
         expr: &UncheckedExpression,
     ) -> CheckResult<Expression> {
         match expr {
@@ -148,24 +149,37 @@ pub mod check {
                 CheckResult::perfect(Expression::IntLiteral(r.clone(), int_val.clone()))
             }
             UncheckedExpression::UVariable(r, UncheckedVariable::UVariable(r2, name)) => {
-                get_variable_offset(r2, variables, false, name)
-                    .map(|offset| Expression::Variable(r.clone(), Variable::Variable(r2.clone(), offset, name.clone())))
+                get_variable_offset(r2, variables, false, name).map(|(index, offset)| {
+                    Expression::Variable(
+                        r.clone(),
+                        Variable {
+                            range: r2.clone(),
+                            index,
+                            offset,
+                            name: name.clone(),
+                            context: ctx.iter().map(|v| v.clone()).collect(),
+                        },
+                    )
+                })
             }
-            UncheckedExpression::UBinary(r, op, ex_l, ex_r) => check_expression(strings, variables, ex_l).bind(|le| {
-                check_expression(strings, variables, ex_r)
-                    .map(|re| Expression::Binary(r.clone(), op.clone(), Box::new(le), Box::new(re)))
-            }),
+            UncheckedExpression::UBinary(r, op, ex_l, ex_r) => {
+                check_expression(strings, variables, ctx, ex_l).bind(|le| {
+                    check_expression(strings, variables, ctx, ex_r)
+                        .map(|re| Expression::Binary(r.clone(), op.clone(), Box::new(le), Box::new(re)))
+                })
+            }
         }
     }
 
     fn check_assignment(
         strings: &mut StringIndexes,
         variables: &mut VariableOffsets,
+        ctx: &mut VecDeque<String>,
         assmt: &UncheckedAssignment,
     ) -> CheckResult<Assignment> {
         match assmt {
             UncheckedAssignment::UExprAssignment(r, expr) => {
-                check_expression(strings, variables, expr).map(|e| Assignment::ExprAssignment(r.clone(), e))
+                check_expression(strings, variables, ctx, expr).map(|e| Assignment::ExprAssignment(r.clone(), e))
             }
             UncheckedAssignment::UBlockAssignment(r, stmts) => {
                 let mut checked_stmts = Vec::new();
@@ -173,7 +187,7 @@ pub mod check {
                 // Allocate variables after the global variables.
                 let mut local_variables: VariableOffsets = (HashMap::new(), variables.1);
                 for stmt in stmts.iter() {
-                    checked_stmts.push(check_stmt(strings, &mut local_variables, stmt));
+                    checked_stmts.push(check_stmt(strings, &mut local_variables, ctx, stmt));
                 }
 
                 // Continue allocating after the variables of this block.
@@ -215,6 +229,7 @@ pub mod check {
     fn check_stmt(
         strings: &mut StringIndexes,
         variables: &mut VariableOffsets,
+        ctx: &mut VecDeque<String>,
         stmt: &UncheckedStatement,
     ) -> CheckResult<Statement> {
         match stmt {
@@ -226,22 +241,35 @@ pub mod check {
                 ))
             }
             UncheckedStatement::UPrintExpr(r1, expr) => {
-                check_expression(strings, variables, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
+                check_expression(strings, variables, ctx, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
             }
             UncheckedStatement::UAssignment(r1, UncheckedVariable::UVariable(r2, name), expr) => {
                 // Check assignment before variable so the variable is not yet known during
                 // assignment evaluation. But do check the variable even if assignment fails
                 // so it is known later.
-                let asmt = check_assignment(strings, variables, &expr);
+                ctx.push_back(name.clone());
+                let assmt = check_assignment(strings, variables, ctx, &expr);
+                ctx.pop_back();
                 let var_offset = get_variable_offset(&r2, variables, true, &name);
 
-                asmt.bind(|a| {
-                    var_offset
-                        .map(|o| Statement::Assignment(r1.clone(), Variable::Variable(r2.clone(), o, name.clone()), a))
+                assmt.bind(|a| {
+                    var_offset.map(|(i, o)| {
+                        Statement::Assignment(
+                            r1.clone(),
+                            Variable {
+                                range: r2.clone(),
+                                index: i,
+                                offset: o,
+                                name: name.clone(),
+                                context: ctx.iter().map(|v| v.clone()).collect(),
+                            },
+                            a,
+                        )
+                    })
                 })
             }
             UncheckedStatement::UReturn(r, expr) => {
-                check_expression(strings, variables, expr).map(|e| Statement::Return(r.clone(), e))
+                check_expression(strings, variables, ctx, expr).map(|e| Statement::Return(r.clone(), e))
             }
         }
     }
@@ -253,7 +281,7 @@ pub mod check {
         // Check and convert each statement one by one.
         let mut stmts: Vec<CheckResult<Statement>> = Vec::new();
         for stmt in program.stmts.iter() {
-            stmts.push(check_stmt(&mut strings, &mut variables, stmt));
+            stmts.push(check_stmt(&mut strings, &mut variables, &mut VecDeque::new(), stmt));
         }
 
         let issues = stmts.iter().flat_map(CheckResult::issues).collect();
@@ -265,7 +293,8 @@ pub mod check {
                     range: program.range.clone(),
                     stmts: new_stmts,
                     strings,
-                    variables: variables.0,
+                    variables_size: variables.1,
+                    variables_count: variables.0.keys().len(),
                 },
                 issues,
             )

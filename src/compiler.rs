@@ -1,10 +1,10 @@
 use crate::console::ReturnOnError;
 use crate::console::{build_flag::BuildFlag, compiler_flag::CompilerFlag};
 use crate::project::project::*;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
-use std::str;
+use std::{iter, str};
 
 /// Writes code to print an int64 to stdout. This code is generated from some c code.
 fn write_print_int_64(wl: &mut dyn FnMut(u8, bool, &str)) {
@@ -88,10 +88,10 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
             wl(offset, true, "; Int literal.");
             wl(offset, false, format!("push {}", int_val).as_str());
         }
-        Expression::Variable(_, Variable::Variable(_, var_offset, name)) => {
-            wl(offset, true, format!("; Variable {}.", name).as_str());
+        Expression::Variable(_, variable) => {
+            wl(offset, true, format!("; Variable {}.", variable.name).as_str());
             wl(offset, false, "mov rax, mem");
-            wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
+            wl(offset, false, format!("add rax, {}", variable.offset * 8).as_str());
             wl(offset, false, "mov rbx, [rax]");
             wl(offset, false, "push rbx");
         }
@@ -109,26 +109,79 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
     }
 }
 
+type Assignments = VecDeque<(Variable, Assignment)>;
+
+/// Writes a function that performs an assignment if needed, and returns the value otherwise.
+fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignments: &mut Assignments) {
+    let assmt_opt = assignments.pop_front();
+    if let Some((var, assmt)) = assmt_opt {
+        let mut scoped_var = var.context;
+        scoped_var.push(var.name);
+
+        wl(offset, true, format!("; Assignment for variable {}", scoped_var.join("::")).as_str());
+        wl(offset, false, format!("__var_{}:", var.index).as_str());
+
+        // Check if the variable's init bit is 1.
+        wl(offset, false, "mov rax, mem_init");
+        wl(offset, false, format!("add rax, {}", (var.index / 8) * 8).as_str());
+        wl(offset, false, format!("shr rax, {}", 7 - (var.index % 8)).as_str());
+        wl(offset, false, "mov rbx, [rax]");
+        wl(offset, false, "add rbx, 0x1");
+        wl(offset, false, "test rbx, rbx");
+        wl(offset, false, format!("jnz, __var_{}_known", var.index).as_str());
+
+        // Calculate the expression value, it will be on top of the stack.
+        write_assignment(wl, offset + 1, assignments, &assmt);
+
+        // Duplicate the return value on the stack.
+        wl(offset, false, "pop rax");
+        wl(offset, false, "push rax");
+        wl(offset, false, "push rax");
+
+        // Set the init bit.
+        wl(offset, false, "mov rax, mem_init");
+        wl(offset, false, format!("add rax, {}", (var.index / 8) * 8).as_str());
+        wl(offset, false, "mov rbx, [rax]");
+        wl(offset, false, format!("or rbx, {}", 2 ^ (7 - (var.index % 8))).as_str());
+        wl(offset, false, "mov [rax], rbx");
+
+        // Store the value.
+        wl(offset, false, "mov rax, mem");
+        wl(offset, false, format!("add rax, {}", var.offset).as_str());
+        wl(offset, false, "pop rbx");
+        wl(offset, false, "mov [rax], rbx");
+
+        // Return.
+        wl(offset, false, "ret");
+
+        // If the value is known.
+        wl(offset, false, "__var_{}_known:");
+        wl(offset, false, "mov rax, mem");
+        wl(offset, false, format!("add rax, {}", var.offset).as_str());
+        wl(offset, false, "mov rbx, [rax]");
+
+        // Store value and return.
+        wl(offset, false, "pop rbx");
+        wl(offset, false, "ret");
+    }
+}
+
 /// Writes an assignment for a variable, given a writing function.
-fn write_assignment(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, variable: &Variable, assmt: &Assignment) {
+fn write_assignment(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignments: &mut Assignments, assmt: &Assignment) {
     match assmt {
         Assignment::ExprAssignment(_, expr) => write_expression(wl, offset, expr),
         Assignment::BlockAssignment(_, stmts) => {
-            // TODO: When assignments become lazy, change this into subroutines, and don't print
-            // them inline in the function, but separate in the list of subroutines.
-
-            let Variable::Variable(_, _, name) = variable;
-            wl(offset, true, format!("; Block assignment for {}", name.as_str()).as_str());
+            wl(offset, true, "; Block assignment.");
             for stmt in stmts {
-                write_statement(wl, offset + 1, stmt);
+                write_statement(wl, offset + 1, assignments, stmt);
             }
-            wl(offset, true, format!("; End of block assignment for {}", name.as_str()).as_str());
+            wl(offset, true, "; End of block assignment.");
         }
     }
 }
 
 /// Writes a statement, given a writing function.
-fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, stmt: &Statement) {
+fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignments: &mut Assignments, stmt: &Statement) {
     match stmt {
         Statement::PrintStr(_, StringLiteral::StringLiteral(_, idx, str)) => {
             wl(offset, true, format!("; PrintStr {}.", asm_encode_string(str)).as_str());
@@ -146,31 +199,33 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, stmt: &Statem
             wl(offset, false, "call _PrintInt64");
         }
         Statement::Assignment(_, var, assmt) => {
-            // TODO: Don't assign directly, but make a Variable expression a call to a subroutine
-            // that checks if it was assigned before, and calculates and assigns if not,
-            // and returns otherwise.
-            let Variable::Variable(_, var_offset, name) = var;
-            wl(offset, true, format!("; Assignment {} start.", name).as_str());
-            write_assignment(wl, offset + 1, var, assmt);
-            wl(offset, true, format!("; Assignment {} store.", name).as_str());
-            wl(offset, false, "pop rbx");
-            // Put address offset from mem in rax
-            wl(offset, false, "mov rax, mem");
+            assignments.push_back((var.clone(), assmt.clone()));
 
-            wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
-            // Store value of rbx in address at rax.
-            wl(offset, false, "mov [rax], rbx");
+            // // TODO: Don't assign directly, but make a Variable expression a call to a subroutine
+            // // that checks if it was assigned before, and calculates and assigns if not,
+            // // and returns otherwise.
+            // let Variable::Variable(_, var_offset, name) = var;
+            // wl(offset, true, format!("; Assignment {} start.", name).as_str());
+            // write_assignment(wl, offset + 1, var, assmt);
+            // wl(offset, true, format!("; Assignment {} store.", name).as_str());
+            // wl(offset, false, "pop rbx");
+            // // Put address offset from mem in rax
+            // wl(offset, false, "mov rax, mem");
+            //
+            // wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
+            // // Store value of rbx in address at rax.
+            // wl(offset, false, "mov [rax], rbx");
         }
         Statement::Return(_, expr) => {
-            // TODO: Multiple returns currently puts multiple values on the stack, and not return early.
-            // Fix this once variable assignments are lazy.
             write_expression(wl, offset, &expr);
+            // TODO: Return early from the assignment block.
+            // TODO: Unreachable code analysis in checker?
         }
     }
     wl(0, true, "");
 }
 
-/// Writes the p roject to x86_64 linux assembly for fasm.
+/// Writes the project to x86_64 linux assembly for fasm.
 pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSet<BuildFlag>) {
     let pretty_print = BuildFlag::PrettyPrintAsm.active(flags);
     let mut file = File::create(file_name).map_err(|_| "Failed to create the file.".to_string()).handle_with_exit(None);
@@ -195,9 +250,10 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(1, true, "; Entry point.");
     wl(0, true, "");
 
-    //Program statements.
+    let mut assignments = VecDeque::new();
+    // Top level statements.
     for stmt in program.stmts.iter() {
-        write_statement(&mut wl, 1, stmt);
+        write_statement(&mut wl, 1, &mut assignments, stmt);
     }
 
     wl(1, true, "; Exit call.");
@@ -212,6 +268,10 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(1, true, "; Subroutines.");
     wl(0, true, "");
 
+    while !assignments.is_empty() {
+        write_assignment_func(&mut wl, 1, &mut assignments);
+    }
+
     // Start of data section.
     wl(0, false, "segment readable writable");
 
@@ -221,7 +281,12 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(0, true, "");
 
     // Start of memory section.
-    if !program.variables.is_empty() {
-        wl(1, false, format!("mem: rb {}", program.variables.len() * 8).as_str());
+    if !program.variables_size > 0 {
+        // The init field needs one bit per variable, so we can divide the count by 8, round up and
+        // reserve that many bytes.
+        let over = if program.variables_count % 8 > 0 { 1 } else { 0 };
+        let count_bytes = (program.variables_count / 8) + over;
+        wl(1, false, format!("mem_init: rb {}", count_bytes).as_str());
+        wl(1, false, format!("mem: rb {}", program.variables_size).as_str());
     }
 }

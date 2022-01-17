@@ -8,10 +8,14 @@ pub mod project {
         StringLiteral(Range, usize, String),
     }
 
-    /// A variable, including its offset in memory.
+    /// A variable.
     #[derive(Clone, Debug)]
-    pub enum Variable {
-        Variable(Range, usize, String),
+    pub struct Variable {
+        pub range: Range,
+        pub index: usize,
+        pub offset: usize,
+        pub name: String,
+        pub context: Vec<String>,
     }
 
     #[derive(Clone, Debug)]
@@ -69,7 +73,8 @@ pub mod project {
         pub range: Range,
         pub stmts: Vec<Statement>,
         pub strings: HashMap<String, usize>,
-        pub variables: HashMap<String, usize>,
+        pub variables_size: usize,
+        pub variables_count: usize,
     }
 
     /// The different types of projects that can be defined.
