@@ -1,7 +1,7 @@
 use crate::console;
 use crate::lexer::{Range, Token, TokenData};
 use crate::prelude::OptExt;
-use crate::project::project::{Operator, ProjectType, SubroutineName};
+use crate::project::project::{Operator, ProjectType};
 use crate::project::unchecked_project::*;
 use std::slice::Iter;
 
@@ -183,26 +183,6 @@ fn try_parse_print_stmt<'a>(state: &'a mut ParserState) -> Option<(UncheckedStat
     }
 }
 
-/// Tries to parse a call statement, will return None if the first keyword is not matched and fail if
-/// anything later fails.
-fn try_parse_call_stmt<'a>(state: &'a mut ParserState) -> Option<(UncheckedStatement, bool)> {
-    let start_range = &state.current_token.range;
-    if state.current_token.data != TokenData::KeywordToken("call".to_string()) {
-        return None;
-    }
-
-    state.next();
-
-    let sub_name = consume(state, |t| t.data.try_get_identifier(), "call subroutine name");
-    Some((
-        UncheckedStatement::UCall(
-            Range::from_ranges(start_range, &state.prev_token.range),
-            SubroutineName::SubroutineName(state.prev_token.range.clone(), sub_name),
-        ),
-        true,
-    ))
-}
-
 /// Parses a (positive or negative) number.
 fn try_parse_number<'a>(state: &'a mut ParserState) -> Option<i64> {
     let backup = state.backup();
@@ -355,7 +335,6 @@ fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<
     }
 
     try_parse_print_stmt(state)
-        .or_else(|| try_parse_call_stmt(state))
         .or_else(|| try_parse_assignment_stmt(state, indent))
         .or_else(|| try_parse_return_stmt(state))
         .or_do(|| {
@@ -370,54 +349,15 @@ fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<
         })
 }
 
-/// Tries to parse a subroutine. This parser will commit to parsing a subroutine after having
-/// parsed the subroutine name followed by a ":".
-fn try_parse_subroutine<'a>(state: &'a mut ParserState) -> Option<UncheckedTopLevelStatement> {
-    let range_start = &state.current_token.range;
-    let name_opt = state.current_token.data.try_get_identifier();
-    let name_range = &state.current_token.range;
-    let has_colon = state.next_token.data == TokenData::SymbolToken(":".to_string());
-    match (name_opt, has_colon) {
-        (Some(name), true) => {
-            state.next();
-            state.next();
-            consume_eols(state, "subroutine");
-
-            let mut stmts: Vec<UncheckedStatement> = Vec::new();
-            let mut stmt_opt = try_parse_statement(state, 1);
-
-            while let Some(stmt) = stmt_opt {
-                stmts.push(stmt);
-                // try_parse_statement already consumes end of lines.
-                stmt_opt = try_parse_statement(state, 1);
-            }
-
-            Some(UncheckedTopLevelStatement::USubroutine(
-                Range::from_ranges(range_start, &state.prev_token.range),
-                SubroutineName::SubroutineName(name_range.clone(), name),
-                stmts,
-            ))
-        }
-        _ => None,
-    }
-}
-
-/// Parses a top-level statement, which is either a subroutine, or a regular statement.
-fn try_parse_top_level_statement<'a>(state: &'a mut ParserState) -> Option<UncheckedTopLevelStatement> {
-    try_parse_statement(state, 0)
-        .map(|stmt| UncheckedTopLevelStatement::UStmt(stmt.range().clone(), stmt))
-        .or_else(|| try_parse_subroutine(state))
-}
-
 /// Parses a program.
 fn parse_program<'a>(state: &'a mut ParserState) -> UncheckedProgram {
     let start_range = &state.current_token.range;
-    let mut stmts: Vec<UncheckedTopLevelStatement> = Vec::new();
-    let mut stmt_opt = try_parse_top_level_statement(state);
+    let mut stmts: Vec<UncheckedStatement> = Vec::new();
+    let mut stmt_opt = try_parse_statement(state, 0);
     while let Some(stmt) = stmt_opt {
         stmts.push(stmt);
         // try_parse_top_level_statement already consumes end of lines.
-        stmt_opt = try_parse_top_level_statement(state);
+        stmt_opt = try_parse_statement(state, 0);
     }
 
     UncheckedProgram {

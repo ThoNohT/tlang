@@ -72,24 +72,6 @@ impl Range {
             end_col: end_range.end_col,
         }
     }
-
-    /// Get the start position of a range.
-    #[allow(dead_code)]
-    pub fn start_pos(self: &Self) -> Position {
-        Position {
-            line: self.start_line,
-            col: self.start_col,
-        }
-    }
-
-    /// Get the end position of a range.
-    #[allow(dead_code)]
-    pub fn end_pos(self: &Self) -> Position {
-        Position {
-            line: self.end_line,
-            col: self.end_col,
-        }
-    }
 }
 
 /// Encodes all the different types of tokens, with their data.

@@ -145,9 +145,6 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, stmt: &Statem
             wl(offset, false, "pop rdi");
             wl(offset, false, "call _PrintInt64");
         }
-        Statement::Call(_, SubroutineName::SubroutineName(_, name)) => {
-            wl(offset, false, format!("call __{}", name).as_str());
-        }
         Statement::Assignment(_, var, assmt) => {
             // TODO: Don't assign directly, but make a Variable expression a call to a subroutine
             // that checks if it was assigned before, and calculates and assigns if not,
@@ -171,23 +168,6 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, stmt: &Statem
         }
     }
     wl(0, true, "");
-}
-
-/// Writes a subroutine, given a writing function.
-/// These are handled in a separate function, since they need to be after all
-/// regular statements.
-fn write_subroutine(wl: &mut dyn FnMut(u8, bool, &str), sub: &TopLevelStatement) {
-    match sub {
-        TopLevelStatement::Subroutine(_, SubroutineName::SubroutineName(_, name), stmts) => {
-            wl(0, false, format!("__{}:", name).as_str());
-            for stmt in stmts.iter() {
-                write_statement(wl, 1, stmt);
-            }
-            wl(1, false, "ret");
-            wl(0, true, "");
-        }
-        _ => {}
-    }
 }
 
 /// Writes the p roject to x86_64 linux assembly for fasm.
@@ -216,7 +196,7 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(0, true, "");
 
     //Program statements.
-    for stmt in program.statements().iter() {
+    for stmt in program.stmts.iter() {
         write_statement(&mut wl, 1, stmt);
     }
 
@@ -231,10 +211,6 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
 
     wl(1, true, "; Subroutines.");
     wl(0, true, "");
-
-    for sr in program.subroutines().iter() {
-        write_subroutine(&mut wl, sr);
-    }
 
     // Start of data section.
     wl(0, false, "segment readable writable");

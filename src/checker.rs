@@ -6,6 +6,7 @@ pub enum CheckIssue {
     /// An error that prevetns compilation.
     CheckError(Range, String),
     /// A warning that indicates a possible problem, but doesn't prevent compilation.
+    #[allow(dead_code)]
     CheckWarning(Range, String),
 }
 
@@ -135,35 +136,7 @@ pub mod check {
     use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
     use crate::project::project::*;
     use crate::project::unchecked_project::*;
-    use std::collections::{HashMap, HashSet, VecDeque};
-
-    fn unused_subs(program: &UncheckedProgram) -> HashSet<SubroutineName> {
-        let subroutines = program.subroutines();
-        let mut unused =
-            subroutines.iter().filter_map(|s| s.name().map(|n| n.value().clone())).collect::<HashSet<String>>();
-
-        let mut stmts_to_check = VecDeque::from(program.statements());
-        while let Some(stmt) = stmts_to_check.pop_front() {
-            if let Some(UncheckedStatement::UCall(_, n)) = stmt.call() {
-                unused.remove(n.value());
-                let new_stmts = subroutines
-                    .clone()
-                    .into_iter()
-                    .find(|s| n.equals(s.name()))
-                    .filter(|s| s.name().map_or(false, |n| unused.contains(n.value())))
-                    .map(|tls| tls.subroutine_statements())
-                    .unwrap_or(Vec::new());
-
-                stmts_to_check.extend(new_stmts);
-            }
-        }
-
-        subroutines
-            .iter()
-            .filter_map(UncheckedTopLevelStatement::name)
-            .filter(|s| unused.contains(s.value()))
-            .collect::<HashSet<SubroutineName>>()
-    }
+    use std::collections::HashMap;
 
     fn check_expression(
         strings: &mut StringIndexes,
@@ -255,7 +228,6 @@ pub mod check {
             UncheckedStatement::UPrintExpr(r1, expr) => {
                 check_expression(strings, variables, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
             }
-            UncheckedStatement::UCall(r, name) => CheckResult::perfect(Statement::Call(r.clone(), name.clone())),
             UncheckedStatement::UAssignment(r1, UncheckedVariable::UVariable(r2, name), expr) => {
                 // Check assignment before variable so the variable is not yet known during
                 // assignment evaluation. But do check the variable even if assignment fails
@@ -275,47 +247,13 @@ pub mod check {
     }
 
     fn check_program(program: &UncheckedProgram) -> CheckResult<Program> {
-        fn check_top_lvl_stmt(
-            strings: &mut StringIndexes,
-            variables: &mut VariableOffsets,
-            top_stmt: &UncheckedTopLevelStatement,
-        ) -> CheckResult<TopLevelStatement> {
-            match top_stmt {
-                UncheckedTopLevelStatement::USubroutine(r, name, stmts) => {
-                    let mut checked_stmts = Vec::new();
-
-                    // Allocate variables after the global variables.
-                    let mut local_variables: VariableOffsets = (HashMap::new(), variables.1);
-                    for stmt in stmts.iter() {
-                        checked_stmts.push(check_stmt(strings, &mut local_variables, stmt));
-                    }
-
-                    // Continue allocating after the variables of this subroutine.
-                    variables.1 = local_variables.1;
-
-                    let issues = checked_stmts.iter().flat_map(CheckResult::issues).collect();
-                    let failed = checked_stmts.iter().map(CheckResult::is_failed).any(|x| x);
-
-                    if !failed {
-                        let new_stmts = checked_stmts.iter().filter_map(CheckResult::value).collect();
-                        CheckResult::Checked(TopLevelStatement::Subroutine(r.clone(), name.clone(), new_stmts), issues)
-                    } else {
-                        CheckResult::Failed(issues)
-                    }
-                }
-                UncheckedTopLevelStatement::UStmt(r, stmt) => {
-                    check_stmt(strings, variables, stmt).map(|s| TopLevelStatement::Stmt(r.clone(), s))
-                }
-            }
-        }
-
         let mut strings = StringIndexes::new();
         let mut variables = (HashMap::new(), 0);
 
         // Check and convert each statement one by one.
-        let mut stmts: Vec<CheckResult<TopLevelStatement>> = Vec::new();
+        let mut stmts: Vec<CheckResult<Statement>> = Vec::new();
         for stmt in program.stmts.iter() {
-            stmts.push(check_top_lvl_stmt(&mut strings, &mut variables, stmt));
+            stmts.push(check_stmt(&mut strings, &mut variables, stmt));
         }
 
         let issues = stmts.iter().flat_map(CheckResult::issues).collect();
@@ -340,49 +278,17 @@ pub mod check {
     pub fn check(project: UncheckedProject) -> CheckResult<Project> {
         let prog = project.program;
 
-        let call_names =
-            prog.calls().iter().filter_map(|s| s.name().map(|n| n.value().clone())).collect::<HashSet<String>>();
-        let sub_names = prog.subroutines().iter().filter_map(|s| s.name().map(|n| n.value().clone())).collect();
-
-        let undefined_calls = call_names.difference(&sub_names).collect::<HashSet<&String>>();
-
-        let mut call_errors = prog
-            .calls()
-            .iter()
-            .filter_map(UncheckedStatement::name)
-            .filter(|n| undefined_calls.contains(n.value()))
-            .map(|SubroutineName::SubroutineName(r, s)| {
-                CheckIssue::CheckError(r.clone(), format!("Call to undefined subroutine '{}'.", s))
-            })
-            .collect::<Vec<CheckIssue>>();
-
-        let mut sub_warnings = unused_subs(&prog)
-            .iter()
-            .map(|SubroutineName::SubroutineName(r, s)| {
-                CheckIssue::CheckWarning(r.clone(), format!("Unused subroutine '{}'.", s))
-            })
-            .collect::<Vec<CheckIssue>>();
-
         let checked_program = check_program(&prog);
 
-        match (call_errors.is_empty(), &checked_program) {
-            (true, CheckResult::Checked(prg, issues)) => {
-                let mut issues = issues.clone();
-                sub_warnings.append(&mut issues);
-                CheckResult::Checked(
-                    Project {
-                        program: prg.clone(),
-                        project_type: project.project_type,
-                    },
-                    sub_warnings,
-                )
-            }
-            _ => {
-                let mut issues = checked_program.issues();
-                sub_warnings.append(&mut call_errors);
-                sub_warnings.append(&mut issues);
-                CheckResult::Failed(sub_warnings)
-            }
+        match &checked_program {
+            CheckResult::Checked(prg, issues) => CheckResult::Checked(
+                Project {
+                    program: prg.clone(),
+                    project_type: project.project_type,
+                },
+                issues.clone(),
+            ),
+            _ => CheckResult::Failed(checked_program.issues()),
         }
     }
 }
