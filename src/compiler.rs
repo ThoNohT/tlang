@@ -165,6 +165,8 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, stmt: &Statem
             wl(offset, false, "mov [rax], rbx");
         }
         Statement::Return(_, expr) => {
+            // TODO: Multiple returns currently puts multiple values on the stack, and not return early.
+            // Fix this once variable assignments are lazy.
             write_expression(wl, offset, &expr);
         }
     }
