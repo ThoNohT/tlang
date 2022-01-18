@@ -122,29 +122,35 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignm
         wl(offset, false, format!("__var_{}:", var.index).as_str());
 
         // Check if the variable's init bit is 1.
+        let byte_offset = var.index / 8;
+        let test_bit = 2 ^ (7 - (var.index % 8));
+        wl(offset, true, "; Check if the variable was already assigned.");
         wl(offset, false, "mov rax, mem_init");
-        wl(offset, false, format!("add rax, {}", (var.index / 8) * 8).as_str());
-        wl(offset, false, format!("shr rax, {}", 7 - (var.index % 8)).as_str());
+        wl(offset, false, format!("add rax, {}", byte_offset).as_str());
         wl(offset, false, "mov rbx, [rax]");
-        wl(offset, false, "test rbx, 0x1");
+        wl(offset, false, format!("test rbx, {}", test_bit).as_str());
+
+        // Jump if the init bit is 1.
+        wl(offset, true, "; Jump to retrieve value if it is 1.");
         wl(offset, false, format!("jnz, __var_{}_known", var.index).as_str());
+
+        // Set the init bit to 1.
+        wl(offset, true, "; Set the init bit to 1.");
+        wl(offset, false, format!("or rbx, {}", test_bit).as_str());
+        wl(offset, false, "mov rbx, [rax]");
 
         // Calculate the expression value, it will be on top of the stack.
         write_assignment(wl, offset + 1, assignments, &assmt);
 
         // Duplicate the return value on the stack.
+        wl(offset, true, "; Duplicate the return value on the stack.");
+        wl(offset, true, "; Once for storing it, and once as returning.");
         wl(offset, false, "pop rax");
         wl(offset, false, "push rax");
         wl(offset, false, "push rax");
 
-        // Set the init bit.
-        wl(offset, false, "mov rax, mem_init");
-        wl(offset, false, format!("add rax, {}", (var.index / 8) * 8).as_str());
-        wl(offset, false, "mov rbx, [rax]");
-        wl(offset, false, format!("or rbx, {}", 2 ^ (7 - (var.index % 8))).as_str());
-        wl(offset, false, "mov [rax], rbx");
-
         // Store the value.
+        wl(offset, true, "; Store the value.");
         wl(offset, false, "mov rax, mem");
         wl(offset, false, format!("add rax, {}", var.offset).as_str());
         wl(offset, false, "pop rbx");
@@ -155,11 +161,13 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignm
 
         // If the value is known.
         wl(offset, false, "__var_{}_known:");
+        wl(offset, true, "; The value is known, retrieve it");
         wl(offset, false, "mov rax, mem");
         wl(offset, false, format!("add rax, {}", var.offset).as_str());
         wl(offset, false, "mov rbx, [rax]");
 
         // Store value and return.
+        wl(offset, true, "; Store the value on the stack and return.");
         wl(offset, false, "pop rbx");
         wl(offset, false, "ret");
     }
