@@ -83,8 +83,9 @@ impl<T: Clone> CheckResult<T> {
 /// The string indexes known throughout the program.
 type StringIndexes = HashMap<String, usize>;
 
-/// The variable offsets an indexes known in the current scope, and the offset to use for the next variable.
-type VariableOffsets = (HashMap<String, (usize, usize)>, usize);
+/// The variable offsets an indexes known in the current scope, the current counter for the number of variables
+/// assigned and the offset to use for the next variable.
+type VariableOffsets = (HashMap<String, (usize, usize)>, usize, usize);
 
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
@@ -119,9 +120,10 @@ fn get_variable_offset<'a>(
             )]))
         }
     } else if assign {
-        let result = (variables.0.keys().len(), variables.1);
+        let result = (variables.1, variables.2);
         variables.0.insert(name.clone(), result);
-        variables.1 += 8;
+        variables.1 += 1;
+        variables.2 += 8;
         CheckResult::perfect(result)
     } else {
         CheckResult::Failed(Vec::from([CheckIssue::CheckError(
@@ -185,13 +187,14 @@ pub mod check {
                 let mut checked_stmts = Vec::new();
 
                 // Allocate variables after the global variables.
-                let mut local_variables: VariableOffsets = (HashMap::new(), variables.1);
+                let mut local_variables: VariableOffsets = (HashMap::new(), variables.1, variables.2);
                 for stmt in stmts.iter() {
                     checked_stmts.push(check_stmt(strings, &mut local_variables, ctx, stmt));
                 }
 
                 // Continue allocating after the variables of this block.
                 variables.1 = local_variables.1;
+                variables.2 = local_variables.2;
 
                 let mut issues: Vec<CheckIssue> = checked_stmts.iter().flat_map(CheckResult::issues).collect();
 
@@ -276,7 +279,7 @@ pub mod check {
 
     fn check_program(program: &UncheckedProgram) -> CheckResult<Program> {
         let mut strings = StringIndexes::new();
-        let mut variables = (HashMap::new(), 0);
+        let mut variables = (HashMap::new(), 0, 0);
 
         // Check and convert each statement one by one.
         let mut stmts: Vec<CheckResult<Statement>> = Vec::new();
@@ -284,7 +287,7 @@ pub mod check {
             stmts.push(check_stmt(&mut strings, &mut variables, &mut VecDeque::new(), stmt));
         }
 
-        let mut issues : Vec<CheckIssue> = stmts.iter().flat_map(CheckResult::issues).collect();
+        let mut issues: Vec<CheckIssue> = stmts.iter().flat_map(CheckResult::issues).collect();
 
         let last_stmt = stmts.last().map(|e| e.value()).flatten();
         match last_stmt {
@@ -311,8 +314,8 @@ pub mod check {
                     range: program.range.clone(),
                     stmts: new_stmts,
                     strings,
-                    variables_size: variables.1,
-                    variables_count: variables.0.keys().len(),
+                    variables_count: variables.1,
+                    variables_size: variables.2,
                 },
                 issues,
             )
