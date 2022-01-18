@@ -284,7 +284,25 @@ pub mod check {
             stmts.push(check_stmt(&mut strings, &mut variables, &mut VecDeque::new(), stmt));
         }
 
-        let issues = stmts.iter().flat_map(CheckResult::issues).collect();
+        let mut issues : Vec<CheckIssue> = stmts.iter().flat_map(CheckResult::issues).collect();
+
+        let last_stmt = stmts.last().map(|e| e.value()).flatten();
+        match last_stmt {
+            None => {
+                issues.push(CheckIssue::CheckError(
+                    program.range.clone(),
+                    "A program needs at least one statement.".to_string(),
+                ));
+            }
+            Some(Statement::Return(_, _)) => {}
+            Some(stmt) => {
+                issues.push(CheckIssue::CheckError(
+                    stmt.range(),
+                    "The last statement of a program needs to be a return.".to_string(),
+                ));
+            }
+        }
+
         let failed = stmts.iter().map(CheckResult::is_failed).any(|x| x);
         if !failed {
             let new_stmts = stmts.iter().filter_map(CheckResult::value).collect();
