@@ -203,6 +203,8 @@ fn write_statement(
             wl(offset, false, "mov rax, 1");
             wl(offset, false, "mov rdi, 1");
             wl(offset, false, "syscall");
+
+            wl(0, true, "");
         }
         Statement::PrintExpr(_, expr) => {
             wl(offset, true, "; PrintExpr start.");
@@ -210,6 +212,8 @@ fn write_statement(
             wl(offset, true, "; PrintExpr print call.");
             wl(offset, false, "pop rdi");
             wl(offset, false, "call _PrintInt64");
+
+            wl(0, true, "");
         }
         Statement::Assignment(_, var, assmt) => {
             assignments.push_back((var.clone(), assmt.clone()));
@@ -228,10 +232,10 @@ fn write_statement(
                 }
             }
 
+            wl(0, true, "");
             // TODO: Unreachable code analysis in checker?
         }
     }
-    wl(0, true, "");
 }
 
 /// Writes the project to x86_64 linux assembly for fasm.
@@ -272,15 +276,15 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(1, false, "syscall");
     wl(0, false, "");
 
-    write_print_int_64(&mut wl);
-    wl(0, true, "");
-
     wl(1, true, "; Subroutines.");
     wl(0, true, "");
 
     while !assignments.is_empty() {
         write_assignment_func(&mut wl, &mut assignments);
     }
+
+    write_print_int_64(&mut wl);
+    wl(0, true, "");
 
     // Start of data section.
     wl(0, false, "segment readable writable");
