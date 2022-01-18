@@ -338,7 +338,6 @@ fn try_parse_statement<'a>(state: &'a mut ParserState, indent: usize) -> Option<
         .or_else(|| try_parse_assignment_stmt(state, indent))
         .or_else(|| try_parse_return_stmt(state))
         .or_do(|| {
-            println!("No statement matched.");
             state.restore(&backup);
         })
         .map(|(s, eols)| {
