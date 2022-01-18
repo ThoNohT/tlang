@@ -126,8 +126,7 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignm
         wl(offset, false, format!("add rax, {}", (var.index / 8) * 8).as_str());
         wl(offset, false, format!("shr rax, {}", 7 - (var.index % 8)).as_str());
         wl(offset, false, "mov rbx, [rax]");
-        wl(offset, false, "add rbx, 0x1");
-        wl(offset, false, "test rbx, rbx");
+        wl(offset, false, "test rbx, 0x1");
         wl(offset, false, format!("jnz, __var_{}_known", var.index).as_str());
 
         // Calculate the expression value, it will be on top of the stack.
