@@ -142,18 +142,12 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignm
         // Calculate the expression value, it will be on top of the stack.
         write_assignment(wl, offset + 1, assignments, &assmt);
 
-        // Duplicate the return value on the stack.
-        wl(offset, true, "; Duplicate the return value on the stack.");
-        wl(offset, true, "; Once for storing it, and once as returning.");
-        wl(offset, false, "pop rax");
-        wl(offset, false, "push rax");
-        wl(offset, false, "push rax");
-
         // Store the value.
+        wl(offset, true, "; Copy the value from the top of the stack for assigning.");
+        wl(offset, false, "mov rbx, [rsp]");
         wl(offset, true, "; Store the value.");
         wl(offset, false, "mov rax, mem");
         wl(offset, false, format!("add rax, {}", var.offset).as_str());
-        wl(offset, false, "pop rbx");
         wl(offset, false, "mov [rax], rbx");
 
         // Return.
