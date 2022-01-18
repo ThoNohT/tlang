@@ -90,10 +90,7 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
         }
         Expression::Variable(_, variable) => {
             wl(offset, true, format!("; Variable {}.", variable.name).as_str());
-            wl(offset, false, "mov rax, mem");
-            wl(offset, false, format!("add rax, {}", variable.offset * 8).as_str());
-            wl(offset, false, "mov rbx, [rax]");
-            wl(offset, false, "push rbx");
+            wl(offset, false, format!("call __var_{}", variable.index).as_str());
         }
         Expression::Binary(_, op, l_expr, r_expr) => {
             wl(offset, true, "; Binary add.");
@@ -130,16 +127,28 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignm
         wl(offset, false, "mov rbx, [rax]");
         wl(offset, false, format!("test rbx, {}", test_bit).as_str());
 
-        // Jump if the init bit is 1.
-        wl(offset, true, "; Jump to retrieve value if it is 1.");
-        wl(offset, false, format!("jnz, __var_{}_known", var.index).as_str());
-
         // Set the init bit to 1.
         wl(offset, true, "; Set the init bit to 1.");
         wl(offset, false, format!("or rbx, {}", test_bit).as_str());
         wl(offset, false, "mov rbx, [rax]");
 
+        // Jump if the init bit was 0.
+        wl(offset, true, "; Jump to calculate value if it is 0.");
+        wl(offset, false, format!("jz, __var_{}_calc", var.index).as_str());
+
+        // If the value is known.
+        wl(offset, true, "; The value is known, retrieve it");
+        wl(offset, false, "mov rax, mem");
+        wl(offset, false, format!("add rax, {}", var.offset).as_str());
+        wl(offset, false, "mov rbx, [rax]");
+
+        // Store value and return.
+        wl(offset, true, "; Store the value on the stack and return.");
+        wl(offset, false, "pop rbx");
+        wl(offset, false, "ret");
+
         // Calculate the expression value, it will be on top of the stack.
+        wl(offset, false, format!("__var_{}_calc:", var.index).as_str());
         write_assignment(wl, offset + 1, assignments, &assmt);
 
         // Store the value.
@@ -151,18 +160,6 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignm
         wl(offset, false, "mov [rax], rbx");
 
         // Return.
-        wl(offset, false, "ret");
-
-        // If the value is known.
-        wl(offset, false, "__var_{}_known:");
-        wl(offset, true, "; The value is known, retrieve it");
-        wl(offset, false, "mov rax, mem");
-        wl(offset, false, format!("add rax, {}", var.offset).as_str());
-        wl(offset, false, "mov rbx, [rax]");
-
-        // Store value and return.
-        wl(offset, true, "; Store the value on the stack and return.");
-        wl(offset, false, "pop rbx");
         wl(offset, false, "ret");
     }
 }
@@ -201,21 +198,6 @@ fn write_statement(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, assignments: 
         }
         Statement::Assignment(_, var, assmt) => {
             assignments.push_back((var.clone(), assmt.clone()));
-
-            // // TODO: Don't assign directly, but make a Variable expression a call to a subroutine
-            // // that checks if it was assigned before, and calculates and assigns if not,
-            // // and returns otherwise.
-            // let Variable::Variable(_, var_offset, name) = var;
-            // wl(offset, true, format!("; Assignment {} start.", name).as_str());
-            // write_assignment(wl, offset + 1, var, assmt);
-            // wl(offset, true, format!("; Assignment {} store.", name).as_str());
-            // wl(offset, false, "pop rbx");
-            // // Put address offset from mem in rax
-            // wl(offset, false, "mov rax, mem");
-            //
-            // wl(offset, false, format!("add rax, {}", var_offset * 8).as_str());
-            // // Store value of rbx in address at rax.
-            // wl(offset, false, "mov [rax], rbx");
         }
         Statement::Return(_, expr) => {
             write_expression(wl, offset, &expr);
