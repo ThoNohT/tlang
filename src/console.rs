@@ -170,7 +170,7 @@ pub fn test_condition(condition: bool, error: &str) {
 /// Runs a command, and echoes the command to sdtout.
 /// If the command fails, the output from stderr is returned and the program exits.
 pub fn run_cmd_echoed(args: Vec<&str>) {
-    println!("{}", args.join(" "));
+    println!("[CMD] {}", args.join(" "));
     let output =
         Command::new(args[0]).args(args[1..].iter()).output().map_err(|e| format!("{}", e)).handle_with_exit(None);
     let code = output.status.code();

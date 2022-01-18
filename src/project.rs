@@ -12,7 +12,7 @@ pub mod project {
     #[derive(Clone, Debug)]
     pub struct Variable {
         pub range: Range,
-        pub index: usize,
+        pub index: u32,
         pub offset: usize,
         pub name: String,
         pub context: Vec<String>,
@@ -74,7 +74,7 @@ pub mod project {
         pub stmts: Vec<Statement>,
         pub strings: HashMap<String, usize>,
         pub variables_size: usize,
-        pub variables_count: usize,
+        pub variables_count: u32,
     }
 
     /// The different types of projects that can be defined.

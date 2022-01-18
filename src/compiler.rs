@@ -91,6 +91,8 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
         Expression::Variable(_, variable) => {
             wl(offset, true, format!("; Variable {}.", variable.name).as_str());
             wl(offset, false, format!("call __var_{}", variable.index).as_str());
+            // The result of calling the variable will be in rax, put it on the stack.
+            wl(offset, false, "push rax");
         }
         Expression::Binary(_, op, l_expr, r_expr) => {
             wl(offset, true, "; Binary add.");
@@ -120,31 +122,31 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), assignments: &mut A
 
         // Check if the variable's init bit is 1.
         let byte_offset = var.index / 8;
-        let test_bit = 2 ^ (7 - (var.index % 8));
+        let base: usize = 2;
+        let test_bit = base.pow(7 - (var.index % 8));
         wl(1, true, "; Check if the variable was already assigned.");
-        wl(1, false, "mov rax, mem_init");
-        wl(1, false, format!("add rax, {}", byte_offset).as_str());
-        wl(1, false, "mov rbx, [rax]");
-        wl(1, false, format!("test rbx, {}", test_bit).as_str());
+        wl(1, false, "mov rbx, mem_init");
+        wl(1, false, format!("add rbx, {}", byte_offset).as_str());
+        wl(1, false, "mov rax, [rbx]");
+        wl(1, false, "mov rcx, rax");
 
         // Set the init bit to 1.
         wl(1, true, "; Set the init bit to 1.");
-        wl(1, false, format!("or rbx, {}", test_bit).as_str());
-        wl(1, false, "mov rbx, [rax]");
+        wl(1, false, format!("or rax, {}", test_bit).as_str());
+        wl(1, false, "mov [rbx], rax");
 
         // Jump if the init bit was 0.
+        wl(1, false, format!("test rcx, {}", test_bit).as_str());
         wl(1, true, "; Jump to calculate value if it is 0.");
         wl(1, false, format!("jz __var_{}_calc", var.index).as_str());
 
         // If the value is known.
-        wl(1, true, "; The value is known, retrieve it");
-        wl(1, false, "mov rax, mem");
-        wl(1, false, format!("add rax, {}", var.offset).as_str());
-        wl(1, false, "mov rbx, [rax]");
+        wl(1, true, "; The value is known, retrieve it.");
+        wl(1, false, "mov rbx, mem");
+        wl(1, false, format!("add rbx, {}", var.offset).as_str());
+        wl(1, false, "mov rax, [rbx]");
 
-        // Store value and return.
-        wl(1, true, "; Store the value on the stack and return.");
-        wl(1, false, "pop rbx");
+        // Return.
         wl(1, false, "ret");
         wl(0, true, "");
 
@@ -153,13 +155,12 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), assignments: &mut A
         write_assignment(wl, 2, assignments, Some(&var), &assmt);
 
         // Store the value.
-        wl(1, true, "; Copy the value from the top of the stack for assigning.");
         wl(1, false, format!("__var_{}_end:", var.index).as_str());
-        wl(1, false, "mov rbx, [rsp]");
+        wl(1, false, "pop rax");
         wl(1, true, "; Store the value.");
-        wl(1, false, "mov rax, mem");
-        wl(1, false, format!("add rax, {}", var.offset).as_str());
-        wl(1, false, "mov [rax], rbx");
+        wl(1, false, "mov rbx, mem");
+        wl(1, false, format!("add rbx, {}", var.offset).as_str());
+        wl(1, false, "mov [rbx], rax");
 
         // Return.
         wl(1, false, "ret");
@@ -210,7 +211,7 @@ fn write_statement(
             wl(offset, true, "; PrintExpr start.");
             write_expression(wl, offset + 1, expr);
             wl(offset, true, "; PrintExpr print call.");
-            wl(offset, false, "pop rdi");
+            wl(offset, false, "mov rdi, rax");
             wl(offset, false, "call _PrintInt64");
 
             wl(0, true, "");
@@ -269,11 +270,11 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
         write_statement(&mut wl, 1, &mut assignments, None, stmt);
     }
 
-    wl(1, true, "; Exit call. Return number on stack.");
+    wl(1, true, "; Exit call. Return number on stack (returned by last statement).");
     wl(1, false, "_exit:");
     wl(1, false, "mov rax, 60");
-    wl(1, false, "pop rdi");
     wl(1, false, "syscall");
+    wl(1, false, "pop rdi");
     wl(0, false, "");
 
     wl(1, true, "; Subroutines.");

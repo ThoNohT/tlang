@@ -85,7 +85,7 @@ type StringIndexes = HashMap<String, usize>;
 
 /// The variable offsets an indexes known in the current scope, the current counter for the number of variables
 /// assigned and the offset to use for the next variable.
-type VariableOffsets = (HashMap<String, (usize, usize)>, usize, usize);
+type VariableOffsets = (HashMap<String, (u32, usize)>, u32, usize);
 
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
@@ -108,7 +108,7 @@ fn get_variable_offset<'a>(
     variables: &'a mut VariableOffsets,
     assign: bool,
     name: &String,
-) -> CheckResult<(usize, usize)> {
+) -> CheckResult<(u32, usize)> {
     if let Some(idx_and_offset) = variables.0.get(name) {
         if !assign {
             CheckResult::Checked(idx_and_offset.clone(), Vec::new())
