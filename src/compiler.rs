@@ -239,8 +239,8 @@ fn write_statement(
     }
 }
 
-/// Writes the project to x86_64 linux assembly for fasm.
-pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSet<BuildFlag>) {
+/// Writes the project to x86_64 linux assembly for nasm or fasm.
+pub fn write_x86_64_linux_asm(file_name: &str, program: Program, flags: &HashSet<BuildFlag>) {
     let pretty_print = BuildFlag::PrettyPrintAsm.active(flags);
     let mut file = File::create(file_name).map_err(|_| "Failed to create the file.".to_string()).handle_with_exit(None);
 
@@ -256,9 +256,15 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     };
 
     // Start of program.
-    wl(0, false, "format ELF64 executable");
-    wl(0, false, "segment readable executable");
-    wl(0, false, "entry _start");
+    if BuildFlag::UseNasm.active(flags) {
+        wl(0, false, "Section .text");
+        wl(1, false, "global _start");
+    } else {
+        wl(0, false, "format ELF64 executable");
+        wl(0, false, "segment readable executable");
+        wl(0, false, "entry _start");
+    }
+
     wl(0, false, "");
     wl(0, false, "_start:");
     wl(1, true, "; Entry point.");
@@ -273,8 +279,8 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(1, true, "; Exit call. Return number on stack (returned by last statement).");
     wl(1, false, "_exit:");
     wl(1, false, "mov rax, 60");
-    wl(1, false, "syscall");
     wl(1, false, "pop rdi");
+    wl(1, false, "syscall");
     wl(0, false, "");
 
     wl(1, true, "; Subroutines.");
@@ -288,11 +294,20 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
     wl(0, true, "");
 
     // Start of data section.
-    wl(0, false, "segment readable writable");
+    if BuildFlag::UseNasm.active(flags) {
+        wl(0, false, "section .data");
 
-    for (str, idx) in program.strings.iter() {
-        wl(1, false, format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str());
+        for (str, idx) in program.strings.iter() {
+            wl(1, false, format!("txt_{} db {}", idx, asm_encode_string(str)).as_str());
+        }
+    } else {
+        wl(0, false, "segment readable writable");
+
+        for (str, idx) in program.strings.iter() {
+            wl(1, false, format!("txt_{}: db {}", idx, asm_encode_string(str)).as_str());
+        }
     }
+
     wl(0, true, "");
 
     // Start of memory section.
@@ -301,7 +316,14 @@ pub fn write_x86_64_linux_fasm(file_name: &str, program: Program, flags: &HashSe
         // reserve that many bytes.
         let over = if program.variables_count % 8 > 0 { 1 } else { 0 };
         let count_bytes = (program.variables_count / 8) + over;
-        wl(1, false, format!("mem_init: rb {}", count_bytes).as_str());
-        wl(1, false, format!("mem: rb {}", program.variables_size).as_str());
+
+        if BuildFlag::UseNasm.active(flags) {
+            wl(0, false, "segment .bss");
+            wl(1, false, format!("mem_init: resb {}", count_bytes).as_str());
+            wl(1, false, format!("mem: resb {}", program.variables_size).as_str());
+        } else {
+            wl(1, false, format!("mem_init: rb {}", count_bytes).as_str());
+            wl(1, false, format!("mem: rb {}", program.variables_size).as_str());
+        }
     }
 }

@@ -50,6 +50,7 @@ pub mod build_flag {
         DumpUncheckedSyntaxTree,
         DumpCheckedSyntaxTree,
         PrettyPrintAsm,
+        UseNasm,
     }
 
     impl CompilerFlag for BuildFlag {
@@ -60,6 +61,7 @@ pub mod build_flag {
                 ("-dtu".to_string(), BuildFlag::DumpUncheckedSyntaxTree),
                 ("-dtc".to_string(), BuildFlag::DumpCheckedSyntaxTree),
                 ("-app".to_string(), BuildFlag::PrettyPrintAsm),
+                ("-nasm".to_string(), BuildFlag::UseNasm),
             ])
         }
 
@@ -70,6 +72,7 @@ pub mod build_flag {
                 BuildFlag::DumpUncheckedSyntaxTree => "Dump the unchecked syntax tree produced by the parser and exit.",
                 BuildFlag::DumpCheckedSyntaxTree => "Dump the checked syntax tree produced by the checker and exit.",
                 BuildFlag::PrettyPrintAsm => "Pretty print assembly code, including comments and indentation.",
+                BuildFlag::UseNasm => "Use nasm rather than fasm for compiling.",
             }
         }
     }

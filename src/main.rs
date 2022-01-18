@@ -76,14 +76,23 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
 
             // Determine file names.
             let asm_file = format!("{}.asm", project_name);
+            let o_file = format!("{}.o", project_name);
             let exe_file = format!("{}", project_name);
 
-            // Write fasm.
+            // Write asm.
             println!("Generating {}", asm_file);
-            crate::compiler::write_x86_64_linux_fasm(asm_file.as_str(), checked_project.program, flags);
+            crate::compiler::write_x86_64_linux_asm(asm_file.as_str(), checked_project.program, flags);
 
-            // Compile fasm.
-            console::run_cmd_echoed(Vec::from(["fasm", "-m", "524288", asm_file.as_str(), exe_file.as_str()]));
+            if BuildFlag::UseNasm.active(flags) {
+                // Compile nasm.
+                console::run_cmd_echoed(Vec::from(["nasm", "-f", "elf64", "-o", o_file.as_str(), asm_file.as_str()]));
+
+                // Link file.
+                console::run_cmd_echoed(Vec::from(["ld", o_file.as_str(), "-o", exe_file.as_str()]));
+            } else {
+                // Compile fasm.
+                console::run_cmd_echoed(Vec::from(["fasm", "-m", "524288", asm_file.as_str(), exe_file.as_str()]));
+            }
 
             exe_file
         }
