@@ -98,7 +98,7 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
             wl(offset, true, "; Binary add.");
             write_expression(wl, offset + 1, l_expr);
             write_expression(wl, offset + 1, r_expr);
-            wl(offset, true, "; Binary add, calculate result");
+            wl(offset, true, "; Binary add, calculate result.");
             wl(offset, false, "pop rbx");
             wl(offset, false, "pop rax");
             // Calculate result, and push.
@@ -117,7 +117,7 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), assignments: &mut A
         let mut scoped_var = var.context.clone();
         scoped_var.push(var.name.clone());
 
-        wl(0, true, format!("; Assignment for variable {}", scoped_var.join("::")).as_str());
+        wl(0, true, format!("; Assignment for variable {}.", scoped_var.join("::")).as_str());
         wl(0, false, format!("__var_{}:", var.index).as_str());
 
         // Check if the variable's init bit is 1.
@@ -138,7 +138,7 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), assignments: &mut A
         // Jump if the init bit was 0.
         wl(1, false, format!("test rcx, {}", test_bit).as_str());
         wl(1, true, "; Jump to calculate value if it is 0.");
-        wl(1, false, format!("jz __var_{}_calc", var.index).as_str());
+        wl(1, false, "jz .calc");
 
         // If the value is known.
         wl(1, true, "; The value is known, retrieve it.");
@@ -151,11 +151,11 @@ fn write_assignment_func(wl: &mut dyn FnMut(u8, bool, &str), assignments: &mut A
         wl(0, true, "");
 
         // Calculate the expression value, it will be on top of the stack.
-        wl(1, false, format!("__var_{}_calc:", var.index).as_str());
-        write_assignment(wl, 2, assignments, Some(&var), &assmt);
+        wl(0, false, ".calc:");
+        write_assignment(wl, 1, assignments, Some(&var), &assmt);
 
         // Store the value.
-        wl(1, false, format!("__var_{}_end:", var.index).as_str());
+        wl(0, false, ".end:");
         wl(1, false, "pop rax");
         wl(1, true, "; Store the value.");
         wl(1, false, "mov rbx, mem");
@@ -224,13 +224,10 @@ fn write_statement(
 
             // After a return statement, jump to the end of the current variable assignment block,
             // or to the end of the application if we are not in a variable assignment.
-            match variable {
-                Some(var) => {
-                    wl(offset, false, format!("jmp __var_{}_end", var.index).as_str());
-                }
-                None => {
-                    wl(offset, false, "jmp _exit");
-                }
+            if variable.is_some() {
+                wl(offset, false, "jmp .end");
+            } else {
+                wl(offset, false, "jmp _exit");
             }
 
             wl(0, true, "");
@@ -277,11 +274,11 @@ pub fn write_x86_64_linux_asm(file_name: &str, program: Program, flags: &HashSet
     }
 
     wl(1, true, "; Exit call. Return number on stack (returned by last statement).");
-    wl(1, false, "_exit:");
+    wl(0, false, "_exit:");
     wl(1, false, "mov rax, 60");
     wl(1, false, "pop rdi");
     wl(1, false, "syscall");
-    wl(0, false, "");
+    wl(0, true, "");
 
     wl(1, true, "; Subroutines.");
     wl(0, true, "");
