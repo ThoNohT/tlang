@@ -118,6 +118,14 @@ fn cleanup(file_name: &str, flags: &HashSet<CleanFlag>) {
             .handle_with_exit(Some("Error cleaning up asm file."));
     }
 
+    let o_file = format!("{}.o", project_name);
+    if Path::new(&o_file).exists() {
+        println!("Removing {}", o_file);
+        remove_file(o_file)
+            .map_err(|_| "Failed to remove file.".to_string())
+            .handle_with_exit(Some("Error cleaning up o file."));
+    }
+
     let exe_file = format!("{}", project_name);
     if CleanFlag::IncludeExe.active(flags) && Path::new(&exe_file).exists() {
         println!("Removing {}", exe_file);
