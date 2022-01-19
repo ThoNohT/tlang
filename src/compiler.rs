@@ -211,7 +211,7 @@ fn write_statement(
             wl(offset, true, "; PrintExpr start.");
             write_expression(wl, offset + 1, expr);
             wl(offset, true, "; PrintExpr print call.");
-            wl(offset, false, "mov rdi, rax");
+            wl(offset, false, "pop rdi");
             wl(offset, false, "call _PrintInt64");
 
             wl(0, true, "");
