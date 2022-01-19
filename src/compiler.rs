@@ -231,7 +231,6 @@ fn write_statement(
             }
 
             wl(0, true, "");
-            // TODO: Unreachable code analysis in checker?
         }
     }
 }

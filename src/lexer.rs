@@ -74,6 +74,12 @@ impl Range {
     }
 }
 
+/// A trait for types from with a range can be obtained.
+pub trait WithRange {
+    /// Obtain the range from a type.
+    fn range(self: &Self) -> &Range;
+}
+
 /// Encodes all the different types of tokens, with their data.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TokenData {
@@ -203,6 +209,12 @@ impl Token {
             self.whitespace_before,
             self.data
         )
+    }
+}
+
+impl WithRange for Token {
+    fn range(self: &Self) -> &Range {
+        &self.range
     }
 }
 

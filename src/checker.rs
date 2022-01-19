@@ -1,4 +1,8 @@
-use crate::lexer::Range;
+use crate::{
+    console,
+    lexer::{Range, WithRange},
+    prelude::OptExt,
+};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -16,6 +20,23 @@ impl CheckIssue {
         match self {
             Self::CheckError(r, err) => format!("Error: {}: {}", r.to_full_string(), err),
             Self::CheckWarning(r, warn) => format!("Warn: {}: {}", r.to_full_string(), warn),
+        }
+    }
+
+    /// Indicates whether the issue is an error.
+    pub fn is_error(self: &Self) -> bool {
+        match self {
+            Self::CheckError(_, _) => true,
+            _ => false,
+        }
+    }
+}
+
+impl WithRange for CheckIssue {
+    fn range(self: &Self) -> &Range {
+        match self {
+            Self::CheckError(r, _) => r,
+            Self::CheckWarning(r, _) => r,
         }
     }
 }
@@ -80,6 +101,19 @@ impl<T: Clone> CheckResult<T> {
     }
 }
 
+impl<T: Clone + WithRange> WithRange for CheckResult<T> {
+    fn range(self: &Self) -> &Range {
+        match self {
+            CheckResult::Checked(e, _) => e.range(),
+            CheckResult::Failed(issues) => issues
+                .iter()
+                .next()
+                .assert_some(|| console::return_with_error("A failed check result needs at least one issue."))
+                .range(),
+        }
+    }
+}
+
 /// The string indexes known throughout the program.
 type StringIndexes = HashMap<String, usize>;
 
@@ -136,6 +170,7 @@ fn get_variable_offset<'a>(
 pub mod check {
     use crate::checker::{get_string_idx, get_variable_offset};
     use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
+    use crate::lexer::WithRange;
     use crate::project::project::*;
     use crate::project::unchecked_project::*;
     use std::collections::{HashMap, VecDeque};
@@ -211,15 +246,26 @@ pub mod check {
                     Some(Statement::Return(_, _)) => {}
                     Some(stmt) => {
                         issues.push(CheckIssue::CheckError(
-                            stmt.range(),
+                            stmt.range().clone(),
                             "The last statement of a block assignment needs to be a return.".to_string(),
                         ));
                     }
                 }
 
-                let failed = checked_stmts.iter().map(CheckResult::is_failed).any(|x| x);
+                let mut issues: Vec<CheckIssue> = checked_stmts.iter().flat_map(CheckResult::issues).collect();
 
-                if !failed {
+                // The first statement after a return is not reachable.
+
+                if let Some(first_unreachable) =
+                    checked_stmts.iter().skip_while(|x| x.value().map_or(true, |s| !s.is_return())).skip(1).next()
+                {
+                    issues.push(CheckIssue::CheckWarning(
+                        first_unreachable.range().clone(),
+                        "Statement is unreachable.".to_string(),
+                    ));
+                }
+
+                if !issues.iter().map(CheckIssue::is_error).any(|x| x) {
                     let new_stmts = checked_stmts.iter().filter_map(CheckResult::value).collect();
                     CheckResult::Checked(Assignment::BlockAssignment(r.clone(), new_stmts), issues)
                 } else {
@@ -289,6 +335,7 @@ pub mod check {
 
         let mut issues: Vec<CheckIssue> = stmts.iter().flat_map(CheckResult::issues).collect();
 
+        // The last statement must be a return statament.
         let last_stmt = stmts.last().map(|e| e.value()).flatten();
         match last_stmt {
             None => {
@@ -300,14 +347,23 @@ pub mod check {
             Some(Statement::Return(_, _)) => {}
             Some(stmt) => {
                 issues.push(CheckIssue::CheckError(
-                    stmt.range(),
+                    stmt.range().clone(),
                     "The last statement of a program needs to be a return.".to_string(),
                 ));
             }
         }
 
-        let failed = stmts.iter().map(CheckResult::is_failed).any(|x| x);
-        if !failed {
+        // The first statement after a return is not reachable.
+        if let Some(first_unreachable) =
+            stmts.iter().skip_while(|x| x.value().map_or(true, |s| !s.is_return())).skip(1).next()
+        {
+            issues.push(CheckIssue::CheckWarning(
+                first_unreachable.range().clone(),
+                "Statement is unreachable.".to_string(),
+            ));
+        }
+
+        if !stmts.iter().map(CheckResult::is_failed).any(|x| x) {
             let new_stmts = stmts.iter().filter_map(CheckResult::value).collect();
             CheckResult::Checked(
                 Program {

@@ -1,5 +1,5 @@
 pub mod project {
-    use crate::lexer::Range;
+    use crate::lexer::{Range, WithRange};
     use std::collections::HashMap;
 
     /// A string literal, including its index in the list of declared string literals.
@@ -56,14 +56,22 @@ pub mod project {
     }
 
     impl Statement {
-        pub fn range(self: &Self) -> Range {
+        pub fn is_return(self: &Self) -> bool {
             match self {
-                Self::PrintStr(range, _) => range,
-                Self::PrintExpr(range, _) => range,
-                Self::Assignment(range, _, _) => range,
-                Self::Return(range, _) => range,
+                Self::Return(_, _) => true,
+                _ => false,
             }
-            .clone()
+        }
+    }
+
+    impl WithRange for Statement {
+        fn range(self: &Self) -> &Range {
+            match self {
+                Statement::PrintStr(r, _) => r,
+                Statement::PrintExpr(r, _) => r,
+                Statement::Assignment(r, _, _) => r,
+                Statement::Return(r, _) => r,
+            }
         }
     }
 
