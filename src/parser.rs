@@ -229,7 +229,10 @@ fn try_parse_expression<'a>(state: &'a mut ParserState) -> Option<UncheckedExpre
         try_consume(state, |t| t.data.try_get_identifier()).map(|name| {
             UncheckedExpression::UVariable(
                 state.prev_token.range.clone(),
-                UncheckedVariable::UVariable(state.prev_token.range.clone(), name),
+                UncheckedVariable {
+                    range: state.prev_token.range.clone(),
+                    name,
+                },
             )
         })
     }
@@ -276,14 +279,26 @@ fn try_parse_assignment_stmt<'a>(state: &'a mut ParserState, indent: usize) -> O
 
     let name_range = &state.current_token.range;
     let name = consume(state, |t| t.data.try_get_identifier(), "assignment variable");
+
+    let param_name_range = &state.current_token.range;
+    let param_name = try_consume(state, |t| t.data.try_get_identifier());
+
     check_and_next(state, |t| t.data == TokenData::SymbolToken("=".to_string()), "assignment");
+
 
     let (assmt, eols) = try_parse_assignment(state, indent)
         .assert_some(|| console::return_with_error("Failed to parse an assignment."));
     Some((
         UncheckedStatement::UAssignment(
             Range::from_ranges(range_start, &state.prev_token.range),
-            UncheckedVariable::UVariable(name_range.clone(), name),
+            UncheckedVariable {
+                range: name_range.clone(),
+                name,
+            },
+            param_name.map(|n| UncheckedVariable {
+                range: param_name_range.clone(),
+                name: n,
+            }),
             assmt,
         ),
         eols,

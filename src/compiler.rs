@@ -216,7 +216,7 @@ fn write_statement(
 
             wl(0, true, "");
         }
-        Statement::Assignment(_, var, assmt) => {
+        Statement::Assignment(_, var, _, assmt) => {
             assignments.push_back((var.clone(), assmt.clone()));
         }
         Statement::Return(_, expr) => {

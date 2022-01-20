@@ -2,8 +2,9 @@ use crate::{
     console,
     lexer::{Range, WithRange},
     prelude::OptExt,
+    project::project::Variable,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug)]
 pub enum CheckIssue {
@@ -119,7 +120,7 @@ type StringIndexes = HashMap<String, usize>;
 
 /// The variable offsets an indexes known in the current scope, the current counter for the number of variables
 /// assigned and the offset to use for the next variable.
-type VariableOffsets = (HashMap<String, (u32, usize)>, u32, usize);
+type VariableCache = (HashMap<String, Variable>, u32, usize);
 
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
@@ -133,43 +134,51 @@ fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: &String) -> usize {
     }
 }
 
-/// Returns the offset for the specified variable name and the updated set of variable offsets. If
-/// the variable was defined before, this offset is returned.
-/// If `assign` is false, then a reference to a non-existent variable will fail the compilation.
-/// If `assign` is true, then a reference to an existing variable will fail the compilation.
-fn get_variable_offset<'a>(
+/// Defines a new variable, and returns the new variable. The next offset and index for variables is updated.
+/// If the variable was defined before, a failed CheckResult will be returned and no variable will be defined.
+fn define_variable<'a>(
     range: &Range,
-    variables: &'a mut VariableOffsets,
-    assign: bool,
+    cache: &'a mut VariableCache,
+    ctx: &mut VecDeque<String>,
     name: &String,
-) -> CheckResult<(u32, usize)> {
-    if let Some(idx_and_offset) = variables.0.get(name) {
-        if !assign {
-            CheckResult::Checked(idx_and_offset.clone(), Vec::new())
-        } else {
-            println!("{} defined", name);
-            CheckResult::Failed(Vec::from([CheckIssue::CheckError(
-                range.clone(),
-                format!("Variable {} already defined.", name),
-            )]))
-        }
-    } else if assign {
-        let result = (variables.1, variables.2);
-        variables.0.insert(name.clone(), result);
-        variables.1 += 1;
-        variables.2 += 8;
+    takes_param: bool,
+) -> CheckResult<Variable> {
+    if let Some(var) = cache.0.get(name) {
+        CheckResult::Failed(Vec::from([CheckIssue::CheckError(
+            range.clone(),
+            format!("Variable {} already defined. Original definition is at {}", name, var.range.to_full_string()),
+        )]))
+    } else {
+        let result = Variable {
+            index: cache.1,
+            range: range.clone(),
+            offset: cache.2,
+            name: name.clone(),
+            context: ctx.iter().map(|v| v.clone()).collect(),
+            takes_param,
+        };
+        cache.0.insert(name.clone(), result.clone());
+        cache.1 += 1;
+        cache.2 += 8;
         CheckResult::perfect(result)
+    }
+}
+
+/// Gets an existing variable. If the variable does not exist a failed CheckResult will be returned.
+fn get_variable<'a>(range: &Range, cache: &'a mut VariableCache, name: &String) -> CheckResult<Variable> {
+    if let Some(var) = cache.0.get(name) {
+        CheckResult::perfect(var.clone())
     } else {
         CheckResult::Failed(Vec::from([CheckIssue::CheckError(
             range.clone(),
-            format!("Variable {} not defined.", name),
+            format!("Variable {} is not defined.", name),
         )]))
     }
 }
 
 pub mod check {
-    use crate::checker::{get_string_idx, get_variable_offset};
-    use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableOffsets};
+    use crate::checker::{define_variable, get_string_idx, get_variable};
+    use crate::checker::{CheckIssue, CheckResult, StringIndexes, VariableCache};
     use crate::lexer::WithRange;
     use crate::project::project::*;
     use crate::project::unchecked_project::*;
@@ -177,7 +186,7 @@ pub mod check {
 
     fn check_expression(
         strings: &mut StringIndexes,
-        variables: &mut VariableOffsets,
+        variables: &mut VariableCache,
         ctx: &mut VecDeque<String>,
         expr: &UncheckedExpression,
     ) -> CheckResult<Expression> {
@@ -185,19 +194,8 @@ pub mod check {
             UncheckedExpression::UIntLiteral(r, int_val) => {
                 CheckResult::perfect(Expression::IntLiteral(r.clone(), int_val.clone()))
             }
-            UncheckedExpression::UVariable(r, UncheckedVariable::UVariable(r2, name)) => {
-                get_variable_offset(r2, variables, false, name).map(|(index, offset)| {
-                    Expression::Variable(
-                        r.clone(),
-                        Variable {
-                            range: r2.clone(),
-                            index,
-                            offset,
-                            name: name.clone(),
-                            context: ctx.iter().map(|v| v.clone()).collect(),
-                        },
-                    )
-                })
+            UncheckedExpression::UVariable(r, variable) => {
+                get_variable(&variable.range, variables, &variable.name).map(|var| Expression::Variable(r.clone(), var))
             }
             UncheckedExpression::UBinary(r, op, ex_l, ex_r) => {
                 check_expression(strings, variables, ctx, ex_l).bind(|le| {
@@ -210,7 +208,7 @@ pub mod check {
 
     fn check_assignment(
         strings: &mut StringIndexes,
-        variables: &mut VariableOffsets,
+        variables: &mut VariableCache,
         ctx: &mut VecDeque<String>,
         assmt: &UncheckedAssignment,
     ) -> CheckResult<Assignment> {
@@ -222,7 +220,7 @@ pub mod check {
                 let mut checked_stmts = Vec::new();
 
                 // Allocate variables after the global variables.
-                let mut local_variables: VariableOffsets = (HashMap::new(), variables.1, variables.2);
+                let mut local_variables: VariableCache = (HashMap::new(), variables.1, variables.2);
                 for stmt in stmts.iter() {
                     checked_stmts.push(check_stmt(strings, &mut local_variables, ctx, stmt));
                 }
@@ -277,7 +275,7 @@ pub mod check {
 
     fn check_stmt(
         strings: &mut StringIndexes,
-        variables: &mut VariableOffsets,
+        variables: &mut VariableCache,
         ctx: &mut VecDeque<String>,
         stmt: &UncheckedStatement,
     ) -> CheckResult<Statement> {
@@ -292,30 +290,24 @@ pub mod check {
             UncheckedStatement::UPrintExpr(r1, expr) => {
                 check_expression(strings, variables, ctx, expr).map(|e| Statement::PrintExpr(r1.clone(), e))
             }
-            UncheckedStatement::UAssignment(r1, UncheckedVariable::UVariable(r2, name), expr) => {
+            UncheckedStatement::UAssignment(r1, variable, param_opt, expr) => {
                 // Check assignment before variable so the variable is not yet known during
                 // assignment evaluation. But do check the variable even if assignment fails
                 // so it is known later.
-                ctx.push_back(name.clone());
+                ctx.push_back(variable.name.clone());
                 let assmt = check_assignment(strings, variables, ctx, &expr);
                 ctx.pop_back();
-                let var_offset = get_variable_offset(&r2, variables, true, &name);
+                let var = define_variable(&variable.range, variables, ctx, &variable.name, param_opt.is_some());
 
-                assmt.bind(|a| {
-                    var_offset.map(|(i, o)| {
-                        Statement::Assignment(
-                            r1.clone(),
-                            Variable {
-                                range: r2.clone(),
-                                index: i,
-                                offset: o,
-                                name: name.clone(),
-                                context: ctx.iter().map(|v| v.clone()).collect(),
-                            },
-                            a,
-                        )
-                    })
-                })
+                let param_opt =
+                    // A parameter must now simply be an i64 parameter, so it cannot take a parameter.
+                    match param_opt.clone().map(|p| define_variable(&p.range, variables, ctx, &p.name, false)) {
+                        None => CheckResult::perfect(None),
+                        Some(CheckResult::Checked(r, i)) => CheckResult::Checked(Some(r), i),
+                        Some(CheckResult::Failed(i)) => CheckResult::Failed(i),
+                    };
+
+                assmt.bind(|a| var.bind(|v| param_opt.map(|po_opt| Statement::Assignment(r1.clone(), v, po_opt, a))))
             }
             UncheckedStatement::UReturn(r, expr) => {
                 check_expression(strings, variables, ctx, expr).map(|e| Statement::Return(r.clone(), e))

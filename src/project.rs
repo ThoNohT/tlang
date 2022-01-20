@@ -16,6 +16,7 @@ pub mod project {
         pub offset: usize,
         pub name: String,
         pub context: Vec<String>,
+        pub takes_param: bool,
     }
 
     #[derive(Clone, Debug)]
@@ -50,7 +51,7 @@ pub mod project {
         /// TODO: currently, the end result of an assignment can always be stored in a variable,
         // this will change once variable assignments can take parameters and they effectively become
         // functions with or without parameters.
-        Assignment(Range, Variable, Assignment),
+        Assignment(Range, Variable, Option<Variable>, Assignment),
         /// Return an expression from a function.
         Return(Range, Expression),
     }
@@ -69,7 +70,7 @@ pub mod project {
             match self {
                 Statement::PrintStr(r, _) => r,
                 Statement::PrintExpr(r, _) => r,
-                Statement::Assignment(r, _, _) => r,
+                Statement::Assignment(r, _, _, _) => r,
                 Statement::Return(r, _) => r,
             }
         }
@@ -111,8 +112,9 @@ pub mod unchecked_project {
     }
 
     #[derive(Clone, Debug)]
-    pub enum UncheckedVariable {
-        UVariable(Range, String),
+    pub struct UncheckedVariable {
+        pub range: Range,
+        pub name: String,
     }
 
     #[derive(Clone, Debug)]
@@ -143,7 +145,7 @@ pub mod unchecked_project {
     pub enum UncheckedStatement {
         UPrintStr(Range, UncheckedStringLiteral),
         UPrintExpr(Range, UncheckedExpression),
-        UAssignment(Range, UncheckedVariable, UncheckedAssignment),
+        UAssignment(Range, UncheckedVariable, Option<UncheckedVariable>, UncheckedAssignment),
         UReturn(Range, UncheckedExpression),
     }
 
