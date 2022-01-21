@@ -88,7 +88,8 @@ fn write_expression(wl: &mut dyn FnMut(u8, bool, &str), offset: u8, expr: &Expre
             wl(offset, true, "; Int literal.");
             wl(offset, false, format!("push {}", int_val).as_str());
         }
-        Expression::Variable(_, variable) => {
+        Expression::Variable(_, variable, _) => {
+            // TODO: Handle passing parameter to variable expression.
             wl(offset, true, format!("; Variable {}.", variable.name).as_str());
             wl(offset, false, format!("call __var_{}", variable.index).as_str());
             // The result of calling the variable will be in rax, put it on the stack.
@@ -217,6 +218,7 @@ fn write_statement(
             wl(0, true, "");
         }
         Statement::Assignment(_, var, _, assmt) => {
+            // TODO: Handle assignment to variable with parameter.
             assignments.push_back((var.clone(), assmt.clone()));
         }
         Statement::Return(_, expr) => {

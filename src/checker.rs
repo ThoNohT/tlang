@@ -122,6 +122,16 @@ type StringIndexes = HashMap<String, usize>;
 /// assigned and the offset to use for the next variable.
 type VariableCache = (HashMap<String, Variable>, u32, usize);
 
+/// Prints the currently known variables.
+#[allow(unused)]
+fn dbg_vars(ctx: &mut VecDeque<String>, vars: &mut VariableCache) {
+    print!("{:?}: ", ctx);
+    for (_, var) in vars.0.iter() {
+        print!("{} ", var.name);
+    }
+    println!();
+}
+
 /// Returns the string index for the specified string updates the set of string literals. If
 /// the string was defined before, this index is returned to prevent allocating a new string.
 fn get_string_idx<'a>(strings: &'a mut StringIndexes, name: &String) -> usize {
@@ -194,8 +204,32 @@ pub mod check {
             UncheckedExpression::UIntLiteral(r, int_val) => {
                 CheckResult::perfect(Expression::IntLiteral(r.clone(), int_val.clone()))
             }
-            UncheckedExpression::UVariable(r, variable) => {
-                get_variable(&variable.range, variables, &variable.name).map(|var| Expression::Variable(r.clone(), var))
+            UncheckedExpression::UVariable(r, variable, expr_opt) => {
+                let var = get_variable(&variable.range, variables, &variable.name);
+                let expr_opt = expr_opt.clone().map(|e| check_expression(strings, variables, ctx, &e));
+
+                let expr_opt = match expr_opt {
+                    Some(CheckResult::Checked(e, i)) => CheckResult::Checked(Some(e), i),
+                    Some(CheckResult::Failed(i)) => CheckResult::Failed(i),
+                    None => CheckResult::perfect(None),
+                };
+
+                var.bind(|var| {
+                    expr_opt.bind(|expr_opt| match (var.takes_param, expr_opt) {
+                        (true, Some(expr)) => {
+                            CheckResult::perfect(Expression::Variable(r.clone(), var, Some(Box::new(expr))))
+                        }
+                        (false, None) => CheckResult::perfect(Expression::Variable(r.clone(), var, None)),
+                        (false, Some(_)) => CheckResult::Failed(Vec::from([CheckIssue::CheckError(
+                            r.clone(),
+                            format!("Variable {} does not take a parameter, but one was provided.", var.name),
+                        )])),
+                        (true, None) => CheckResult::Failed(Vec::from([CheckIssue::CheckError(
+                            r.clone(),
+                            format!("Variable {} takes a parameter, but none was provided.", var.name),
+                        )])),
+                    })
+                })
             }
             UncheckedExpression::UBinary(r, op, ex_l, ex_r) => {
                 check_expression(strings, variables, ctx, ex_l).bind(|le| {
@@ -219,15 +253,14 @@ pub mod check {
             UncheckedAssignment::UBlockAssignment(r, stmts) => {
                 let mut checked_stmts = Vec::new();
 
-                // Allocate variables after the global variables.
-                let mut local_variables: VariableCache = (HashMap::new(), variables.1, variables.2);
+                // Variables defined inside these statements should not leak out.
+                let variables_backup = variables.clone();
                 for stmt in stmts.iter() {
-                    checked_stmts.push(check_stmt(strings, &mut local_variables, ctx, stmt));
+                    checked_stmts.push(check_stmt(strings, variables, ctx, stmt));
                 }
 
-                // Continue allocating after the variables of this block.
-                variables.1 = local_variables.1;
-                variables.2 = local_variables.2;
+                // Restore previous variable list.
+                variables.0 = variables_backup.0;
 
                 let mut issues: Vec<CheckIssue> = checked_stmts.iter().flat_map(CheckResult::issues).collect();
 
@@ -295,8 +328,17 @@ pub mod check {
                 // assignment evaluation. But do check the variable even if assignment fails
                 // so it is known later.
                 ctx.push_back(variable.name.clone());
+
+                // The parameter is only known inside the assignment.
+                let variables_backup = variables.clone();
+                param_opt.clone().map(|p| {
+                    define_variable(&p.range, variables, ctx, &p.name, false);
+                });
                 let assmt = check_assignment(strings, variables, ctx, &expr);
+
+                // Restore the previous context and variables.
                 ctx.pop_back();
+                variables.0 = variables_backup.0;
                 let var = define_variable(&variable.range, variables, ctx, &variable.name, param_opt.is_some());
 
                 let param_opt =

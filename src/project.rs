@@ -28,7 +28,7 @@ pub mod project {
     #[derive(Clone, Debug)]
     pub enum Expression {
         IntLiteral(Range, i64),
-        Variable(Range, Variable),
+        Variable(Range, Variable, Option<Box<Expression>>),
         Binary(Range, Operator, Box<Expression>, Box<Expression>),
     }
 
@@ -120,7 +120,7 @@ pub mod unchecked_project {
     #[derive(Clone, Debug)]
     pub enum UncheckedExpression {
         UIntLiteral(Range, i64),
-        UVariable(Range, UncheckedVariable),
+        UVariable(Range, UncheckedVariable, Option<Box<UncheckedExpression>>),
         UBinary(Range, Operator, Box<UncheckedExpression>, Box<UncheckedExpression>),
     }
 
@@ -128,7 +128,7 @@ pub mod unchecked_project {
         pub fn get_range(self: &Self) -> Range {
             match self {
                 Self::UIntLiteral(r, _) => r,
-                Self::UVariable(r, _) => r,
+                Self::UVariable(r, _, _) => r,
                 Self::UBinary(r, _, _, _) => r,
             }
             .clone()
