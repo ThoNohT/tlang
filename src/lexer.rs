@@ -1,3 +1,5 @@
+use crate::console::formatting::{color, faint, Formattable};
+
 /// A position for a token.
 #[derive(Copy, Clone, Debug)]
 pub struct Position {
@@ -24,6 +26,7 @@ impl Position {
     }
 }
 
+// TODO: Define Range in terms of Position?
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Range {
     pub file: String,
@@ -71,6 +74,26 @@ impl Range {
             end_line: end_range.end_line,
             end_col: end_range.end_col,
         }
+    }
+}
+
+impl Formattable for Range {
+    fn format_bare(self: &Self) -> String {
+        faint(
+            color(
+                32,
+                format!(
+                    "[{}:{}:{}->{}:{}]",
+                    self.file,
+                    self.start_line + 1,
+                    self.start_col + 1,
+                    self.end_line + 1,
+                    self.end_col + 1,
+                )
+                .as_str(),
+            )
+            .as_str(),
+        )
     }
 }
 

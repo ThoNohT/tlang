@@ -100,6 +100,44 @@ pub mod clean_flag {
     }
 }
 
+pub mod formatting {
+    use std::fmt::Display;
+
+    /// https://chrisyeh96.github.io/2020/03/28/terminal-colors.html
+    pub fn color<T: Display>(nr: u8, elem: T) -> String {
+        format!("{}{}{}{}{}", "\x1b[", nr, "m", format!("{}", elem), "\x1b[0m")
+    }
+
+    pub fn bold<T: Display>(elem: T) -> String {
+        format!("{}{}{}", "\x1b[1m", format!("{}", elem), "\x1b[0m")
+    }
+
+    pub fn faint<T: Display>(elem: T) -> String {
+        format!("{}{}{}", "\x1b[2m", format!("{}", elem), "\x1b[0m")
+    }
+
+    /// A trait that can be used for formatting elements.
+    pub trait Formattable {
+        /// Bare implementation for formatting an object without caring for indentation.
+        fn format_bare(self: &Self) -> String;
+
+        /// Uses format_bare to format an object with the needed indentation.
+        fn format(self: &Self, indent: u8) -> String {
+            self.format_bare().lines().map(|l| indent_line(l, indent)).collect::<Vec<String>>().join("\n")
+        }
+    }
+
+    /// Indents a single line.
+    fn indent_line(str: &str, indent: u8) -> String {
+        if indent > 0 {
+            let indent_str = (0..(indent * 4) - 2).map(|_| " ").collect::<String>();
+            format!(" {}{}{}", faint(color(36, ".")), indent_str, str)
+        } else {
+            str.to_string()
+        }
+    }
+}
+
 /// The Result type in this application always contains a String as error.
 pub type AppResult<T> = Result<T, String>;
 

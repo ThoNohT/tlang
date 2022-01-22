@@ -2,6 +2,7 @@ use crate::checker::CheckResult;
 use crate::console::build_flag::BuildFlag;
 use crate::console::clean_flag::CleanFlag;
 use crate::console::compiler_flag::CompilerFlag;
+use crate::console::formatting::Formattable;
 use crate::console::ReturnOnError;
 use crate::project::project::ProjectType;
 use std::collections::HashSet;
@@ -47,7 +48,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
     let project = crate::parser::parse_project(tokens);
 
     if BuildFlag::DumpUncheckedSyntaxTree.active(flags) {
-        println!("{:#?}", &project);
+        println!("{}", project.format(0));
         exit(0);
     }
 
@@ -70,7 +71,7 @@ fn compile(file_name: &str, flags: &HashSet<BuildFlag>) -> String {
             }
 
             if BuildFlag::DumpCheckedSyntaxTree.active(flags) {
-                println!("{:#?}", checked_project);
+                println!("{}", checked_project.format(0));
                 exit(0);
             }
 
