@@ -331,9 +331,8 @@ pub mod check {
 
                 // The parameter is only known inside the assignment.
                 let variables_backup = variables.clone();
-                param_opt.clone().map(|p| {
-                    define_variable(&p.range, variables, ctx, &p.name, false);
-                });
+
+                let param_opt = param_opt.clone().map(|p| define_variable(&p.range, variables, ctx, &p.name, false));
                 let assmt = check_assignment(strings, variables, ctx, &expr);
 
                 // Restore the previous context and variables.
@@ -343,7 +342,7 @@ pub mod check {
 
                 let param_opt =
                     // A parameter must now simply be an i64 parameter, so it cannot take a parameter.
-                    match param_opt.clone().map(|p| define_variable(&p.range, variables, ctx, &p.name, false)) {
+                    match param_opt {
                         None => CheckResult::perfect(None),
                         Some(CheckResult::Checked(r, i)) => CheckResult::Checked(Some(r), i),
                         Some(CheckResult::Failed(i)) => CheckResult::Failed(i),
