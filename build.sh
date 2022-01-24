@@ -2,10 +2,10 @@
 
 if [ $1 = "build" ]; then
     echo "Building"
-    stack build
+    stack install
 elif [ $1 = "run" ]; then
     echo "Running"
-    stack run build bar.tl -r
+    stack run -- build bar.tl -r
 elif [ $1 = "test" ]; then
     echo "Running tests"
     echo "Not implemented yet."
