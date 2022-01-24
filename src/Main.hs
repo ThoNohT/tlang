@@ -5,6 +5,7 @@ module Main where
 import Control.Monad (foldM_)
 import Data.Bifoldable (bifoldlM)
 import Data.Function ((&))
+import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Maybe (mapMaybe)
@@ -87,8 +88,16 @@ accumulate = foldl checkArg (Right Set.empty)
     checkArg acc arg =
       case (fromString arg, acc) of
         (Just flag, Right flags) -> Right (Set.insert flag flags)
+        (Nothing, Right _) -> Left [arg]
         (Nothing, Left invalidArgs) -> Left (arg : invalidArgs)
         _ -> acc
+
+-- | Gets the set of flags from an Either that contains the flags or the list of invalid flags.
+--   If there are invalid flags, an error message is printed to stderr and the program exits.
+getFlagsOrExit :: CompilerFlag a => String -> Either [String] (Set a) -> IO (Set a)
+getFlagsOrExit compilerName = \case
+  Left invalidFlags -> exitWithUsageError compilerName $ printf "Invalid flags: %s" (intercalate ", " invalidFlags)
+  Right flags -> pure flags
 
 -- | Converts the list of flags into a string that can be displayed in the usage message.
 showFlags :: CompilerFlag a => Map String a -> String
@@ -146,20 +155,13 @@ printUsage compilerName = do
 -- | Checks a condition, and if it fails, prints the usage string, displays the specified error
 --   and then exits with exit code 1.
 testConditionWithUsageError :: String -> Bool -> String -> IO ()
-testConditionWithUsageError compilerName condition error = do
-  if condition
-    then pure ()
-    else do
-      ePutStrLn error
-      printUsage compilerName
-      exitFailure
+testConditionWithUsageError compilerName False error = exitWithUsageError compilerName error
+testConditionWithUsageError compilerName True error = pure ()
 
 -- | Checks a condition, and if it fails, displays the specified error and then exits with exit code 1.
 testCondition :: Bool -> String -> IO ()
-testCondition condition error =
-  if not condition
-    then exitWithError error
-    else pure ()
+testCondition False error = exitWithError error
+testCondition True error = pure ()
 
 -- | Exits the application with exit code 1 after showing the specified error message.
 exitWithError :: String -> IO a
@@ -167,25 +169,63 @@ exitWithError error = do
   ePutStrLn error
   exitFailure
 
+-- | Exits the application with exit code 1 after showing the usage string and the specified error message.
+exitWithUsageError :: String -> String -> IO a
+exitWithUsageError compilerName error = do
+  printUsage compilerName
+  exitWithError error
+
 -- | Runs a command and echoes the command to stdout.
 --   If the command fails, the output from stderr is returned and the program exits.
---   Stdout output of the command is not displayed.
-runCmdEchoed :: FilePath -> [String] -> IO ()
-runCmdEchoed path args = do
+--   Stdout output of the command is only displayed if requested.
+runCmdEchoed :: FilePath -> [String] -> Bool -> IO ()
+runCmdEchoed path args echoStdOut = do
   let showCmd = showCommandForUser path args
   putStrLn $ printf "[CMD] %s" showCmd
-  (exitCode, _, stderr) <- readProcessWithExitCode path args ""
+  (exitCode, stdout, stderr) <- readProcessWithExitCode path args ""
+  if echoStdOut then putStrLn stdout else pure ()
   case exitCode of
     ExitFailure code -> do
       ePutStrLn stderr
       exitWithError $ printf "Command exited with status %i." code
     ExitSuccess -> pure ()
 
+{- Main -}
+
+-- | Compiles the project in the specified file. Returns the file path to the executable that was compiled.
+compile :: FilePath -> Set BuildFlag -> IO FilePath
+compile = undefined
+
+-- | Cleans up the intermediary files created while compiling the program.
+cleanup :: FilePath -> Set CleanFlag -> IO ()
+cleanup = undefined
+
 main :: IO ()
 main = do
   compilerName <- getProgName
   args <- getArgs
+  testConditionWithUsageError compilerName (not (null args)) "Missing command."
 
-  testConditionWithUsageError compilerName (length args >= 8) "Not enough arguments"
-  putStrLn "Hello World!"
+  let cmd = head args
+  let args_ = tail args
+  case cmd of
+    -- build Builds a project.
+    "build" -> do
+      testConditionWithUsageError compilerName (not (null args_)) "Missing build target."
+      let target = head args_
+      flags <- getFlagsOrExit compilerName $ accumulate (tail args_)
+      exeFile <- compile target flags
+      if isActive Run flags
+        then runCmdEchoed exeFile [] True
+        else pure ()
+
+    -- clean runs cleanup.
+    "clean" -> do
+      testConditionWithUsageError compilerName (not (null args_)) "Missing clean target."
+      let target = head args_
+      flags <- getFlagsOrExit compilerName $ accumulate (tail args_)
+      cleanup target flags
+
+    -- Any other command is invalid.
+    _ -> exitWithUsageError compilerName $ printf "Invalid command '%s'." cmd
   exitSuccess
