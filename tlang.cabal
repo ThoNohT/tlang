@@ -6,7 +6,7 @@ cabal-version: 1.12
 
 name:           tlang
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/tlang#readme>
+description:    Please see the README on GitHub at <https://github.com/ThoNohT/tlang#readme>
 homepage:       https://github.com/ThoNohT/tlang#readme
 bug-reports:    https://github.com/ThoNohT/tlang/issues
 author:         Eric Bataille
