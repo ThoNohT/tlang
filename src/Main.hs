@@ -145,10 +145,10 @@ instance CompilerFlag CleanFlag where
 printUsage compilerName = do
   putStrLn $ printf "Usage: %s <COMMAND> [OPTIONS]" compilerName
   putStrLn "  COMMAND:"
-  putStrLn "    build <name>     Build the program with the specified name."
+  putStrLn "    build <file>     Build the project specified in the specified file."
   putStrLn "      OPTIONS:"
   putStr $ showFlags (allFlags :: Map String BuildFlag)
-  putStrLn "    clean <name>     Clean the output for the program with the specified name."
+  putStrLn "    clean <file>     Clean the output for the project specified in the specified file."
   putStrLn "      OPTIONS:"
   putStrLn $ showFlags (allFlags :: Map String CleanFlag)
 
