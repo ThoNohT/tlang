@@ -5,7 +5,7 @@ module Main where
 import Control.Monad (foldM_)
 import Data.Bifoldable (bifoldlM)
 import Data.Function ((&))
-import Data.List (intercalate)
+import qualified Data.List as List (intercalate, uncons)
 import Data.Map (Map)
 import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Maybe (mapMaybe)
@@ -96,7 +96,7 @@ accumulate = foldl checkArg (Right Set.empty)
 --   If there are invalid flags, an error message is printed to stderr and the program exits.
 getFlagsOrExit :: CompilerFlag a => String -> Either [String] (Set a) -> IO (Set a)
 getFlagsOrExit compilerName = \case
-  Left invalidFlags -> exitWithUsageError compilerName $ printf "Invalid flags: %s" (intercalate ", " invalidFlags)
+  Left invalidFlags -> exitWithUsageError compilerName $ printf "Invalid flags: %s" (List.intercalate ", " invalidFlags)
   Right flags -> pure flags
 
 -- | Converts the list of flags into a string that can be displayed in the usage message.
@@ -152,16 +152,27 @@ printUsage compilerName = do
   putStrLn "      OPTIONS:"
   putStrLn $ showFlags (allFlags :: Map String CleanFlag)
 
--- | Checks a condition, and if it fails, prints the usage string, displays the specified error
+-- | Checks a condition, and if it fails, shows the usage string and the specified error
 --   and then exits with exit code 1.
 testConditionWithUsageError :: String -> Bool -> String -> IO ()
 testConditionWithUsageError compilerName False error = exitWithUsageError compilerName error
 testConditionWithUsageError compilerName True error = pure ()
 
--- | Checks a condition, and if it fails, displays the specified error and then exits with exit code 1.
+-- | Checks a condition, and if it fails, shows the specified error and then exits with exit code 1.
 testCondition :: Bool -> String -> IO ()
 testCondition False error = exitWithError error
 testCondition True error = pure ()
+
+-- | Unwraps a Maybe, and if it is Nothing, shows the usage string and the specified error
+--   and then exits with exit code 1.
+assertJustWithUsageError :: String -> String -> Maybe a -> IO a
+assertJustWithUsageError compilerName error Nothing = exitWithUsageError compilerName error
+assertJustWithUsageError _ _ (Just v) = pure v
+
+-- | Unwraps a Maybe, and if it is Nothing, then shows the specified error and exits with exit code 1.
+assertJust :: String -> Maybe a -> IO a
+assertJust error Nothing = exitWithError error
+assertJust _ (Just a) = pure a
 
 -- | Exits the application with exit code 1 after showing the specified error message.
 exitWithError :: String -> IO a
@@ -204,16 +215,16 @@ main :: IO ()
 main = do
   compilerName <- getProgName
   args <- getArgs
-  testConditionWithUsageError compilerName (not (null args)) "Missing command."
+
+  (cmd, args_) <- assertJustWithUsageError compilerName "Command not specified." $ List.uncons args
 
   let cmd = head args
   let args_ = tail args
   case cmd of
     -- build Builds a project.
     "build" -> do
-      testConditionWithUsageError compilerName (not (null args_)) "Missing build target."
-      let target = head args_
-      flags <- getFlagsOrExit compilerName $ accumulate (tail args_)
+      (target, flagStrs) <- assertJustWithUsageError compilerName "Build target not specified." $ List.uncons args_
+      flags <- getFlagsOrExit compilerName $ accumulate flagStrs
       exeFile <- compile target flags
       if isActive Run flags
         then runCmdEchoed exeFile [] True
@@ -221,9 +232,8 @@ main = do
 
     -- clean runs cleanup.
     "clean" -> do
-      testConditionWithUsageError compilerName (not (null args_)) "Missing clean target."
-      let target = head args_
-      flags <- getFlagsOrExit compilerName $ accumulate (tail args_)
+      (target, flagStrs) <- assertJustWithUsageError compilerName "Clean target not specified." $ List.uncons args_
+      flags <- getFlagsOrExit compilerName $ accumulate flagStrs
       cleanup target flags
 
     -- Any other command is invalid.
