@@ -10,10 +10,12 @@ import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set (empty, fromList, insert, member)
+import GHC.IO.Exception (ExitCode (..))
 import GHC.IO.Handle.Text (hPutStrLn)
 import System.Environment (getArgs, getProgName)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (stderr)
+import System.Process (readProcessWithExitCode, showCommandForUser)
 import Text.Printf (printf)
 
 {- Prelude -}
@@ -152,11 +154,32 @@ testConditionWithUsageError compilerName condition error = do
       printUsage compilerName
       exitFailure
 
+-- | Checks a condition, and if it fails, displays the specified error and then exits with exit code 1.
+testCondition :: Bool -> String -> IO ()
+testCondition condition error =
+  if not condition
+    then exitWithError error
+    else pure ()
+
 -- | Exits the application with exit code 1 after showing the specified error message.
-exitWithError :: String -> IO ()
+exitWithError :: String -> IO a
 exitWithError error = do
   ePutStrLn error
   exitFailure
+
+-- | Runs a command and echoes the command to stdout.
+--   If the command fails, the output from stderr is returned and the program exits.
+--   Stdout output of the command is not displayed.
+runCmdEchoed :: FilePath -> [String] -> IO ()
+runCmdEchoed path args = do
+  let showCmd = showCommandForUser path args
+  putStrLn $ printf "[CMD] %s" showCmd
+  (exitCode, _, stderr) <- readProcessWithExitCode path args ""
+  case exitCode of
+    ExitFailure code -> do
+      ePutStrLn stderr
+      exitWithError $ printf "Command exited with status %i." code
+    ExitSuccess -> pure ()
 
 main :: IO ()
 main = do
