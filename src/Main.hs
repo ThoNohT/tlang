@@ -21,6 +21,7 @@ import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set (empty, fromList, insert, member)
+import Debug.Trace (trace, traceStack)
 import GHC.IO.Exception (ExitCode (..))
 import GHC.IO.Handle.Text (hPutStrLn)
 import System.Environment (getArgs, getProgName)
@@ -236,7 +237,10 @@ runCmdEchoed path args echoStdOut = do
 isWhitespace c = Char.isSpace c && c /= '\n'
 
 -- | A position in a source file.
-data Position = Position {line :: Int, col :: Int} deriving (Show)
+data Position = Position {line :: Int, col :: Int}
+
+instance Formattable Position where
+  formatBare Position {line, col} = printf "%i:%i" line col
 
 -- | Converts a position to a string including the specified filename.
 posToFileString :: FilePath -> Position -> String
@@ -255,7 +259,11 @@ nextLine :: Position -> Position
 nextLine pos = pos {col = 0, line = line pos + 1}
 
 -- | A range of positions in a source file.
-data Range = Range {file :: FilePath, startPos :: Position, endPos :: Position} deriving (Show)
+data Range = Range {file :: FilePath, startPos :: Position, endPos :: Position}
+
+instance Formattable Range where
+  formatBare Range {file, startPos, endPos} =
+    color 32 $ printf "[%s:%s->%s]" file (formatBare startPos) (formatBare endPos)
 
 rangeFromPositions filename startPos endPos =
   Range {file = filename, startPos, endPos}
@@ -274,12 +282,17 @@ data TokenData
   | CommentToken String -- TODO: This tokens should not be consumed by the parser, but may be useful for reconstructing the original source code?
   deriving (Show)
 
+instance Formattable TokenData where formatBare = bold . show
+
 data Token = Token
   { range :: Range,
     tData :: TokenData,
     whitespaceBefore :: Maybe String
   }
-  deriving (Show)
+
+instance Formattable Token where
+  formatBare Token {range, tData, whitespaceBefore} =
+    printf "%s %s\nwhitespaceBefore: %s\n%s" (formatBare range) (bold "Token") (color 35 $ show $ null whitespaceBefore) (format 1 tData)
 
 data LexerState = LexerState
   { filename :: FilePath,
@@ -320,7 +333,7 @@ createLexerState input filename =
     }
   where
     (atEndOfInput, (firstChar, sanitizedInput)) =
-      maybe (True, ('\0', [])) (True,) $ List.uncons $ removeChar '\r' input
+      maybe (True, ('\0', [])) (False,) $ List.uncons $ removeChar '\r' input
 
 -- | Moves to the next character in the lexer state.
 --   If autoAccumulate is enabled then the tokens will be added to accumulator, until the end of the input is reached.
@@ -559,6 +572,10 @@ lexFile keywords filename input =
       -- Repeatedly runs the lexers until all input has been consumed.
       runner :: LexerM [Token]
       runner = do
+        ei <- lift $ ST.gets atEndOfInput
+        let x = traceStack (show ei) "test"
+        let _ = trace x
+
         whileSE_ (not . atEndOfInput) step
         lift $ ST.modify $ addToken EndOfInputToken
         lift $ ST.gets tokens
@@ -575,7 +592,9 @@ compile :: FilePath -> Set BuildFlag -> IO FilePath
 compile fileName flags = do
   input <- readFile fileName
   let tokens = lexFile keywords fileName input
-  print tokens
+  case tokens of
+    Right ts -> putStrLn $ unlines $ fmap formatBare ts
+    Left err -> exitWithError $ printf "Lexer error: %s" err
 
   undefined
 
