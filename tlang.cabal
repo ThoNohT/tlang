@@ -32,5 +32,7 @@ executable tlang
   build-depends:
       base >=4.7 && <5
     , containers
+    , monad-loops
     , process
+    , transformers
   default-language: Haskell2010

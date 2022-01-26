@@ -32,3 +32,5 @@ executables:
     dependencies:
     - containers
     - process
+    - transformers
+    - monad-loops
