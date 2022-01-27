@@ -22,7 +22,6 @@ import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set (empty, fromList, insert, member)
-import Debug.Trace (trace, traceStack)
 import GHC.IO.Exception (ExitCode (..))
 import GHC.IO.Handle.Text (hPutStrLn)
 import System.Environment (getArgs, getProgName)
@@ -33,8 +32,6 @@ import Text.Printf (printf)
 import Text.Read (Lexeme (Char), readMaybe)
 
 {- Prelude -}
-
-traceShow str a = trace (str ++ ": " ++ show a) a
 
 -- | Adds padding of the specified character at the end of the string, until it has at least the specified width.
 rightPad :: Char -> Int -> String -> String
@@ -315,8 +312,7 @@ data LexerState = LexerState
     startOfLine :: Bool,
     spacesPerIndent :: Maybe Int,
     whitespaceBefore :: Maybe String,
-    atEndOfInput :: Bool,
-    ltrace :: [String]
+    atEndOfInput :: Bool
   }
 
 -- | Creates a lexer state from the specified input and filename.
@@ -335,15 +331,11 @@ createLexerState input filename =
       startOfLine = True,
       spacesPerIndent = Nothing,
       whitespaceBefore = Nothing,
-      atEndOfInput,
-      ltrace = []
+      atEndOfInput
     }
   where
     (atEndOfInput, (firstChar, sanitizedInput)) =
       maybe (True, ('\0', [])) (False,) $ List.uncons $ removeChar '\r' input
-
-tracel :: String -> LexerState -> LexerState
-tracel msg state@LexerState {ltrace} = state {ltrace = msg : ltrace}
 
 -- | Moves to the next character in the lexer state.
 --   If autoAccumulate is enabled then the tokens will be added to accumulator, until the end of the input is reached.
@@ -356,11 +348,9 @@ nextChar state =
         _ -> state {pos = nextCol $ pos state, prevPos = pos state, startOfLine = False}
 
       -- Sets curChar to the next character.
-      setNextChar state = case (\c -> trace (show $ fst <$> c) c) $ List.uncons $ input state of
+      setNextChar state = case List.uncons $ input state of
         Just (nextChar, input') ->
-          let newState =
-                (\s -> trace (List.intercalate "\n" [show input', show $ ltrace s, show $ tokens s]) s) $
-                  state {curChar = nextChar, input = input'}
+          let newState = state {curChar = nextChar, input = input'}
            in if autoAccumulate state then accumulateChar (curChar state) newState else newState
         Nothing -> state {atEndOfInput = True, curChar = '\0'}
    in if atEndOfInput state
@@ -387,7 +377,7 @@ addToken tData state@LexerState {tokens, whitespaceBefore, filename, tokenStartP
 
 -- | Returns the accumulated string since the last start point.
 accumulatedString :: LexerState -> String
-accumulatedString LexerState {accumulator} = traceShow "acc" $ reverse accumulator
+accumulatedString LexerState {accumulator} = reverse accumulator
 
 -- | Sets autoAccumulate to the specified value.
 setAutoAccumulate :: Bool -> LexerState -> LexerState
@@ -428,15 +418,14 @@ lexerAssertJust Nothing msg = do
 --   or when an unexpected number of spaces is encountered.
 lexIndent :: LexerM ()
 lexIndent = do
-  lift $ ST.modify' $ tracel "lexIndent"
   lift $ ST.modify' setTokenStartPoint
   spi <- lift $ ST.gets spacesPerIndent
-  case traceShow "spi" spi of
+  case spi of
     Nothing -> lift $ do
       -- The number of spaces per indent is not yet known, the total number of spaces encountered during the first time
       -- leading whitespace occurs is taken as the number of spaces per indent.
       whileS_
-        (\s -> traceShow "X" $ not (atEndOfInput s) && isWhitespace (curChar s))
+        (\s -> not (atEndOfInput s) && isWhitespace (curChar s))
         ( do
             ST.modify' (\s -> s {spacesPerIndent = Just $ maybe 1 (1 +) (spacesPerIndent s)})
             ST.modify' nextChar
@@ -463,7 +452,6 @@ lexIndent = do
 -- | Lexes a number, simply a token with a value as long as the characters are numeric.
 lexNumber :: LexerM ()
 lexNumber = do
-  lift $ ST.modify' $ tracel "lexNumber"
   lift $ ST.modify' setTokenStartPoint
   lift $ whileS_ (\s -> not (atEndOfInput s) && isDigit (curChar s)) (ST.modify' nextChar)
   nrStr <- lift $ ST.gets accumulatedString
@@ -475,17 +463,14 @@ lexNumber = do
 --   contained in the set of keywords, a keyword token is added, otherwise an identifier token is added.
 lexIdentifier :: Set String -> LexerM ()
 lexIdentifier keywords = lift $ do
-  ST.modify' $ tracel "lexIdentifier"
   ST.modify' setTokenStartPoint
-  whileS_ (\s -> traceShow "continue" (not (atEndOfInput s) && isAlphaNum (curChar s))) (ST.modify' nextChar)
-  ST.modify' $ tracel "afterLoop"
+  whileS_ (\s -> not (atEndOfInput s) && isAlphaNum (curChar s)) (ST.modify' nextChar)
   id <- ST.gets accumulatedString
   ST.modify' $ addToken $ if Set.member id keywords then KeywordToken id else IdentifierToken id
 
 -- | Lexes a string literal.
 lexStringLiteral :: LexerM ()
 lexStringLiteral = do
-  lift $ ST.modify' $ tracel "lexStringLiteral"
   lift $ ST.modify' setTokenStartPoint
   lift $ ST.modify' $ setAutoAccumulate False
 
@@ -531,7 +516,6 @@ lexStringLiteral = do
 -- | Lexes a symbol, or any other token that can be started by regular symbol characters.
 lexSymbol :: LexerM ()
 lexSymbol = lift $ do
-  ST.modify' $ tracel "lexSymbol"
   ST.modify' setTokenStartPoint
   firstChar <- ST.gets curChar
   ST.modify' nextChar
@@ -556,15 +540,13 @@ lexSymbol = lift $ do
 
     lexRegularSymbol :: State LexerState ()
     lexRegularSymbol = do
-      ST.modify' $ tracel "lexRegularSymbol"
-      whileS_ (\s -> traceShow "contSym" (not (atEndOfInput s) && isSymbolChar (curChar s))) (ST.modify' nextChar)
+      whileS_ (\s -> not (atEndOfInput s) && isSymbolChar (curChar s)) (ST.modify' nextChar)
       sym <- ST.gets accumulatedString
-      if trace "null" $ not $ null sym then ST.modify' $ addToken $ SymbolToken sym else ST.modify' $ tracel "symbol empty"
+      if not $ null sym then ST.modify' $ addToken $ SymbolToken sym else pure ()
 
 -- | Lexes some whitespace, sets whitespaceBefore to the whitespace that was parsed.
 lexWhitespace :: LexerM ()
 lexWhitespace = lift $ do
-  ST.modify' $ tracel "lexWhitespace"
   whileS_ consumeMoreWhitespace (ST.modify' nextChar)
   accStr <- ST.gets accumulatedString
   ST.modify' $ setWhitespaceBefore (Just accStr)
@@ -574,7 +556,6 @@ lexWhitespace = lift $ do
 -- | Lexes a newline token.
 lexNewline :: LexerM ()
 lexNewline = lift $ do
-  ST.modify' $ tracel "lexNewline"
   ST.modify' setTokenStartPoint
   ST.modify' nextChar
   ST.modify' $ addToken EndOfLineToken
@@ -586,16 +567,15 @@ lexFile keywords filename input =
       -- lexer.
       step :: LexerM ()
       step = do
-        --lift $ ST.modify' $ tracel "step"
         curChar <- lift $ ST.gets curChar
         startOfLine <- lift $ ST.gets startOfLine
         if
-            | isWhitespace (traceShow "1" curChar) && startOfLine -> lexIndent
-            | isWhitespace (traceShow "2" curChar) -> lexWhitespace
-            | Char.isDigit (traceShow "3" curChar) -> lexNumber
-            | Char.isAlpha (traceShow "4" curChar) -> lexIdentifier keywords
-            | (traceShow "5" curChar) == '"' -> lexStringLiteral
-            | (traceShow "6" curChar) == '\n' -> lexNewline
+            | isWhitespace curChar && startOfLine -> lexIndent
+            | isWhitespace curChar -> lexWhitespace
+            | Char.isDigit curChar -> lexNumber
+            | Char.isAlpha curChar -> lexIdentifier keywords
+            | curChar == '"' -> lexStringLiteral
+            | curChar == '\n' -> lexNewline
             | otherwise -> lexSymbol
 
       -- Repeatedly runs the lexers until all input has been consumed.
