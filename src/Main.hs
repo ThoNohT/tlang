@@ -204,6 +204,11 @@ assertJust :: String -> Maybe a -> IO a
 assertJust error Nothing = exitWithError error
 assertJust _ (Just a) = pure a
 
+-- | Unwraps an Either String, and if it is Left, then shows the specified error and exits with exit code 1.
+assertRight :: Either String a -> IO a
+assertRight (Left err) = exitWithError err
+assertRight (Right a) = pure a
+
 -- | Exits the application with exit code 1 after showing the specified error message.
 exitWithError :: String -> IO a
 exitWithError error = do
@@ -611,10 +616,12 @@ keywords = Set.fromList ["Executable", "let", "print", "return"]
 compile :: FilePath -> Set BuildFlag -> IO FilePath
 compile fileName flags = do
   input <- readFile fileName
-  let tokens = lexFile keywords fileName input
-  case tokens of
-    Right ts -> putStrLn $ unlines $ fmap formatBare ts
-    Left err -> exitWithError $ printf "Lexer error: %s" err
+  tokens <- assertRight $ lexFile keywords fileName input
+
+  if isActive DumpLexerTokens flags then do
+    putStr $ unlines $ fmap formatBare tokens
+    exitSuccess
+  else pure ()
 
   undefined
 
