@@ -12,7 +12,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import Control.Monad.Trans.State (State)
 import qualified Control.Monad.Trans.State as ST (evalState, get, gets, modify')
-import Data.Bifunctor (second)
+import Data.Bifunctor (bimap, second)
 import Data.Char as Char (isAlpha, isAlphaNum, isDigit, isSpace)
 import Data.Foldable (forM_)
 import Data.Function ((&))
@@ -88,7 +88,7 @@ format indent = List.intercalate "\n" . fmap indentLine . lines . formatBare
   where
     indentLine l =
       if indent > 0
-        then printf " %s%s" (faint $ color 36 ".") $ replicate ((indent * 4) - 2) ' ' ++ l
+        then printf " %s%s" (faint $ color 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
         else l
 
 -- | Print the specified text to stderr.
@@ -279,22 +279,36 @@ data TokenData
   | SeparatorToken String
   | EndOfLineToken
   | EndOfInputToken
-  | CommentToken String -- TODO: This tokens should not be consumed by the parser, but may be useful for reconstructing the original source code?
+  | CommentToken String -- TODO: This token should not be consumed by the parser, but may be useful for reconstructing the original source code?
   deriving (Show)
 
-instance Formattable TokenData where formatBare = bold . show
+instance Formattable TokenData where
+  formatBare td = uncurry (printf "%s%s") $ bimap bold (color 35) tuple
+    where
+      tuple =
+        case td of
+          IndentationToken ind -> ("IndentationToken ", show ind)
+          KeywordToken kw -> ("KeywordToken ", kw)
+          IdentifierToken id -> ("IdentifierToken ", id)
+          SymbolToken sym -> ("SymbolToken ", sym)
+          StringLiteralToken str -> ("StringLiteralToken ", show str)
+          NumberToken num -> ("NumberToken ", show num)
+          SeparatorToken sep -> ("SeparatorToken ", sep)
+          EndOfLineToken -> ("EndOfLineToken", "")
+          EndOfInputToken -> ("EndOfInputToken", "")
+          CommentToken str -> ("CommentToken ", str)
 
 data Token = Token
   { range :: Range,
     tData :: TokenData,
-    whitespaceBefore :: Maybe String
+    whitespaceBefore :: String
   }
 
 instance Show Token where show = show . tData
 
 instance Formattable Token where
   formatBare Token {range, tData, whitespaceBefore} =
-    printf "%s %s\nwhitespaceBefore: %s\n%s" (formatBare range) (bold "Token") (color 35 $ show $ null whitespaceBefore) (format 1 tData)
+    printf "%s %s, whitespaceBefore: %s" (formatBare range) (formatBare tData) (color 35 $ show whitespaceBefore)
 
 data LexerState = LexerState
   { filename :: FilePath,
@@ -306,12 +320,12 @@ data LexerState = LexerState
     -- Output
     tokens :: [Token],
     -- Other state.
-    accumulator :: [Char],
+    accumulator :: String,
     autoAccumulate :: Bool,
     curChar :: Char,
     startOfLine :: Bool,
     spacesPerIndent :: Maybe Int,
-    whitespaceBefore :: Maybe String,
+    whitespaceBefore :: String,
     atEndOfInput :: Bool
   }
 
@@ -330,7 +344,7 @@ createLexerState input filename =
       curChar = firstChar,
       startOfLine = True,
       spacesPerIndent = Nothing,
-      whitespaceBefore = Nothing,
+      whitespaceBefore = "",
       atEndOfInput
     }
   where
@@ -363,15 +377,15 @@ setTokenStartPoint :: LexerState -> LexerState
 setTokenStartPoint state = state {tokenStartPos = pos state, accumulator = []}
 
 -- | Sets the whitespaceBefore field to the specified value.
-setWhitespaceBefore :: Maybe String -> LexerState -> LexerState
+setWhitespaceBefore :: String -> LexerState -> LexerState
 setWhitespaceBefore value state = state {whitespaceBefore = value}
 
 -- | Adds a token to the output list.
 --   Uses the state's backup position as the start of the token, and the previous position as the end.
---   whitespaceBefore is reset to Nothing.
+--   whitespaceBefore is reset to the empty string.
 addToken :: TokenData -> LexerState -> LexerState
 addToken tData state@LexerState {tokens, whitespaceBefore, filename, tokenStartPos, prevPos} =
-  state {tokens = newToken : tokens, whitespaceBefore = Nothing}
+  state {tokens = newToken : tokens, whitespaceBefore = ""}
   where
     newToken = Token {range = rangeFromPositions filename tokenStartPos prevPos, whitespaceBefore = whitespaceBefore, tData = tData}
 
@@ -547,9 +561,10 @@ lexSymbol = lift $ do
 -- | Lexes some whitespace, sets whitespaceBefore to the whitespace that was parsed.
 lexWhitespace :: LexerM ()
 lexWhitespace = lift $ do
+  ST.modify' setTokenStartPoint
   whileS_ consumeMoreWhitespace (ST.modify' nextChar)
   accStr <- ST.gets accumulatedString
-  ST.modify' $ setWhitespaceBefore (Just accStr)
+  ST.modify' $ setWhitespaceBefore accStr
   where
     consumeMoreWhitespace state = not (atEndOfInput state) && isWhitespace (curChar state)
 
