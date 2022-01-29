@@ -4,7 +4,7 @@ import Console (Formattable (formatBare), bold, color)
 import Control.Monad (forM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import Control.Monad.Trans.State (State)
+import Control.Monad.Trans.State.Lazy (State)
 import qualified Control.Monad.Trans.State.Lazy as ST (evalState, get, gets, modify)
 import Core (whileSE, whileSE_, whileS_)
 import Data.Bifunctor (Bifunctor (bimap, second))
@@ -372,26 +372,25 @@ lexNewline = lift $ do
 
 -- | Lexes a file into a list of tokens.
 lexFile :: Set String -> FilePath -> String -> Either String [Token]
-lexFile keywords filename input =
-  let -- One step in the global lexer process. Matches against the next symbol and then calls the appropriate sub-
-      -- lexer.
-      step :: LexerM ()
-      step = do
-        curChar <- lift $ ST.gets curChar
-        startOfLine <- lift $ ST.gets startOfLine
-        if
-            | isWhitespace curChar && startOfLine -> lexIndent
-            | isWhitespace curChar -> lexWhitespace
-            | Char.isDigit curChar -> lexNumber
-            | Char.isAlpha curChar -> lexIdentifier keywords
-            | curChar == '"' -> lexStringLiteral
-            | curChar == '\n' || curChar == '\r' -> lexNewline
-            | otherwise -> lexSymbol
+lexFile keywords filename input = second reverse $ ST.evalState (runExceptT runner) $ createLexerState input filename
+  where
+    -- One step in the global lexer process. Matches against the next symbol and then calls the appropriate sub lexer.
+    step :: LexerM ()
+    step = do
+      curChar <- lift $ ST.gets curChar
+      startOfLine <- lift $ ST.gets startOfLine
+      if
+          | isWhitespace curChar && startOfLine -> lexIndent
+          | isWhitespace curChar -> lexWhitespace
+          | Char.isDigit curChar -> lexNumber
+          | Char.isAlpha curChar -> lexIdentifier keywords
+          | curChar == '"' -> lexStringLiteral
+          | curChar == '\n' || curChar == '\r' -> lexNewline
+          | otherwise -> lexSymbol
 
-      -- Repeatedly runs the lexers until all input has been consumed.
-      runner :: LexerM [Token]
-      runner = do
-        whileSE_ (not . atEndOfInput) step
-        lift $ ST.modify $ addToken EndOfInputToken
-        lift $ ST.gets tokens
-   in second reverse $ ST.evalState (runExceptT runner) $ createLexerState input filename
+    -- Repeatedly runs the lexers until all input has been consumed.
+    runner :: LexerM [Token]
+    runner = do
+      whileSE_ (not . atEndOfInput) step
+      lift $ ST.modify $ addToken EndOfInputToken
+      lift $ ST.gets tokens
