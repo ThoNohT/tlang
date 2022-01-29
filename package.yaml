@@ -29,6 +29,12 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    default-extensions:
+    - DuplicateRecordFields
+    - LambdaCase
+    - MultiWayIf
+    - NamedFieldPuns
+    - TupleSections
     dependencies:
     - containers
     - process

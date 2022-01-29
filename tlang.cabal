@@ -25,9 +25,21 @@ source-repository head
 executable tlang
   main-is: Main.hs
   other-modules:
+      CompilerFlag
+      Console
+      Core
+      Lexer
+      Parser
+      Project
       Paths_tlang
   hs-source-dirs:
       src
+  default-extensions:
+      DuplicateRecordFields
+      LambdaCase
+      MultiWayIf
+      NamedFieldPuns
+      TupleSections
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
