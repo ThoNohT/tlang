@@ -6,7 +6,7 @@ import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import Control.Monad.Trans.State (State)
 import qualified Control.Monad.Trans.State.Lazy as ST
-import Core (removeChar, whileSE, whileSE_, whileS_)
+import Core (whileSE, whileSE_, whileS_)
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (isDigit)
 import qualified Data.Char as Char (isAlpha, isAlphaNum, isDigit, isSpace)
@@ -63,7 +63,7 @@ data TokenData
   | StringLiteralToken String
   | NumberToken Int
   | SeparatorToken String
-  | EndOfLineToken
+  | EndOfLineToken String
   | EndOfInputToken
   | CommentToken String -- TODO: This token should not be consumed by the parser, but may be useful for reconstructing the original source code?
   deriving (Show)
@@ -80,7 +80,7 @@ instance Formattable TokenData where
           StringLiteralToken str -> ("StringLiteralToken ", show str)
           NumberToken num -> ("NumberToken ", show num)
           SeparatorToken sep -> ("SeparatorToken ", sep)
-          EndOfLineToken -> ("EndOfLineToken", "")
+          EndOfLineToken eol -> ("EndOfLineToken ", show eol)
           EndOfInputToken -> ("EndOfInputToken", "")
           CommentToken str -> ("CommentToken ", str)
 
@@ -135,7 +135,7 @@ createLexerState input filename =
     }
   where
     (atEndOfInput, (firstChar, sanitizedInput)) =
-      maybe (True, ('\0', [])) (False,) $ List.uncons $ removeChar '\r' input
+      maybe (True, ('\0', [])) (False,) $ List.uncons input
 
 -- | Moves to the next character in the lexer state.
 --   If autoAccumulate is enabled then the tokens will be added to accumulator, until the end of the input is reached.
@@ -359,8 +359,12 @@ lexWhitespace = lift $ do
 lexNewline :: LexerM ()
 lexNewline = lift $ do
   ST.modify' setTokenStartPoint
+  prevChar <- ST.gets curChar
   ST.modify' nextChar
-  ST.modify' $ addToken EndOfLineToken
+  curChar <- ST.gets curChar
+  if prevChar == '\r' && curChar == '\n' then ST.modify nextChar else pure ()
+  newlineStr <- ST.gets accumulatedString
+  ST.modify' $ addToken $ EndOfLineToken newlineStr
 
 -- | Lexes a file into a list of tokens.
 lexFile :: Set String -> FilePath -> String -> Either String [Token]
@@ -377,7 +381,7 @@ lexFile keywords filename input =
             | Char.isDigit curChar -> lexNumber
             | Char.isAlpha curChar -> lexIdentifier keywords
             | curChar == '"' -> lexStringLiteral
-            | curChar == '\n' -> lexNewline
+            | curChar == '\n' || curChar == '\r' -> lexNewline
             | otherwise -> lexSymbol
 
       -- Repeatedly runs the lexers until all input has been consumed.
