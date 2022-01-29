@@ -276,7 +276,7 @@ rangeFromPositions filename startPos endPos =
 -- | Encodes all the differnt types of tokens, with their data.
 data TokenData
   = IndentationToken Int
-  | KeywordToken String
+  | KeywordToken String -- TODO: Replace KeywordToken with WordToken and let the parser check if a reserved word is used in the spot of an identifier?
   | IdentifierToken String
   | SymbolToken String
   | StringLiteralToken String
