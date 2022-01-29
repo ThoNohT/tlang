@@ -1,11 +1,11 @@
-module Lexer (Position, Range, Token, TokenData (..), lexFile) where
+module Lexer (Position, Range, Token, TokenData (..), lexFile, ignoreToken) where
 
 import Console (Formattable (formatBare), bold, color)
 import Control.Monad (forM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import Control.Monad.Trans.State (State)
-import qualified Control.Monad.Trans.State.Lazy as ST
+import qualified Control.Monad.Trans.State.Lazy as ST (evalState, get, gets, modify)
 import Core (whileSE, whileSE_, whileS_)
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (isDigit)
@@ -51,6 +51,7 @@ instance Formattable Range where
   formatBare Range {file, startPos, endPos} =
     color 32 $ printf "[%s:%s->%s]" file (formatBare startPos) (formatBare endPos)
 
+-- | Creates a range from two positions and a filename.
 rangeFromPositions filename startPos endPos =
   Range {file = filename, startPos, endPos}
 
@@ -65,8 +66,13 @@ data TokenData
   | SeparatorToken String
   | EndOfLineToken String
   | EndOfInputToken
-  | CommentToken String -- TODO: This token should not be consumed by the parser, but may be useful for reconstructing the original source code?
+  | CommentToken String
   deriving (Show)
+
+-- | Indicates whether the parser should ignore this token.
+ignoreToken :: TokenData -> Bool
+ignoreToken (CommentToken _) = True
+ignoreToken _ = False
 
 instance Formattable TokenData where
   formatBare td = uncurry (printf "%s%s") $ bimap bold (color 35) tuple
@@ -89,8 +95,6 @@ data Token = Token
     tData :: TokenData,
     whitespaceBefore :: String
   }
-
-instance Show Token where show = show . tData
 
 instance Formattable Token where
   formatBare Token {range, tData, whitespaceBefore} =
@@ -219,7 +223,7 @@ lexerAssertJust Nothing msg = do
 --   or when an unexpected number of spaces is encountered.
 lexIndent :: LexerM ()
 lexIndent = do
-  lift $ ST.modify' setTokenStartPoint
+  lift $ ST.modify setTokenStartPoint
   spi <- lift $ ST.gets spacesPerIndent
   case spi of
     Nothing -> lift $ do
@@ -228,11 +232,11 @@ lexIndent = do
       whileS_
         (\s -> not (atEndOfInput s) && isWhitespace (curChar s))
         ( do
-            ST.modify' (\s -> s {spacesPerIndent = Just $ maybe 1 (1 +) (spacesPerIndent s)})
-            ST.modify' nextChar
+            ST.modify (\s -> s {spacesPerIndent = Just $ maybe 1 (1 +) (spacesPerIndent s)})
+            ST.modify nextChar
         )
 
-      ST.modify' $ addToken $ IndentationToken 1
+      ST.modify $ addToken $ IndentationToken 1
     Just spi' -> do
       -- The number of spaces per indent is known, so take a multiple of this number of spaces, and return this as
       -- the indent level.
@@ -241,41 +245,41 @@ lexIndent = do
           (\s -> not (atEndOfInput s) && isWhitespace (curChar s))
           ( do
               checkLexerPredicate ((==) ' ' . curChar) "Leading whitespace may only consist of whitespaces."
-              lift $ ST.modify' nextChar
+              lift $ ST.modify nextChar
           )
       let nSpaces = length spaces
       let sOffset = nSpaces `rem` spi'
       let prefix = "Invalid number of leading spaces. Expected a multiple of"
       checkLexerPredicate' (sOffset == 0) $
         printf "%s %i, but got %i, which %i too many or %i too few." prefix spi' nSpaces sOffset (spi' - sOffset)
-      lift $ ST.modify' $ addToken $ IndentationToken (nSpaces `div` spi')
+      lift $ ST.modify $ addToken $ IndentationToken (nSpaces `div` spi')
 
 -- | Lexes a number, simply a token with a value as long as the characters are numeric.
 lexNumber :: LexerM ()
 lexNumber = do
-  lift $ ST.modify' setTokenStartPoint
-  lift $ whileS_ (\s -> not (atEndOfInput s) && isDigit (curChar s)) (ST.modify' nextChar)
+  lift $ ST.modify setTokenStartPoint
+  lift $ whileS_ (\s -> not (atEndOfInput s) && isDigit (curChar s)) (ST.modify nextChar)
   nrStr <- lift $ ST.gets accumulatedString
   let nrMaybe = readMaybe nrStr :: Maybe Int
   nr <- lexerAssertJust nrMaybe "Failed to parse a number."
-  lift $ ST.modify' $ addToken $ NumberToken nr
+  lift $ ST.modify $ addToken $ NumberToken nr
 
 -- | Lexes an identifier or a keyword, consumes characters as long as they are alphanumeric. If the resulting name is
 --   contained in the set of keywords, a keyword token is added, otherwise an identifier token is added.
 lexIdentifier :: Set String -> LexerM ()
 lexIdentifier keywords = lift $ do
-  ST.modify' setTokenStartPoint
-  whileS_ (\s -> not (atEndOfInput s) && Char.isAlphaNum (curChar s)) (ST.modify' nextChar)
+  ST.modify setTokenStartPoint
+  whileS_ (\s -> not (atEndOfInput s) && Char.isAlphaNum (curChar s)) (ST.modify nextChar)
   id <- ST.gets accumulatedString
-  ST.modify' $ addToken $ if Set.member id keywords then KeywordToken id else IdentifierToken id
+  ST.modify $ addToken $ if Set.member id keywords then KeywordToken id else IdentifierToken id
 
 -- | Lexes a string literal.
 lexStringLiteral :: LexerM ()
 lexStringLiteral = do
-  lift $ ST.modify' setTokenStartPoint
-  lift $ ST.modify' $ setAutoAccumulate False
+  lift $ ST.modify setTokenStartPoint
+  lift $ ST.modify $ setAutoAccumulate False
 
-  lift $ ST.modify' nextChar
+  lift $ ST.modify nextChar
   whileSE_
     (\s -> not (atEndOfInput s) && curChar s /= '"')
     ( do
@@ -283,18 +287,18 @@ lexStringLiteral = do
         if curChar == '\\'
           then do
             escapedStr <- lexEscapedChar
-            lift $ forM_ escapedStr (ST.modify' . accumulateChar)
-          else lift $ ST.modify' $ accumulateChar curChar
+            lift $ forM_ escapedStr (ST.modify . accumulateChar)
+          else lift $ ST.modify $ accumulateChar curChar
 
-        lift $ ST.modify' nextChar
+        lift $ ST.modify nextChar
     )
 
   assertNotAtEnd ""
-  lift $ ST.modify' nextChar
+  lift $ ST.modify nextChar
   str <- lift $ ST.gets accumulatedString
-  lift $ ST.modify' $ addToken $ StringLiteralToken str
+  lift $ ST.modify $ addToken $ StringLiteralToken str
 
-  lift $ ST.modify' $ setAutoAccumulate True
+  lift $ ST.modify $ setAutoAccumulate True
   where
     mappedChars :: Map Char Char
     mappedChars =
@@ -302,7 +306,7 @@ lexStringLiteral = do
 
     lexEscapedChar :: LexerM String
     lexEscapedChar = do
-      lift $ ST.modify' nextChar
+      lift $ ST.modify nextChar
       assertNotAtEnd "escaped character in "
       curChar <- lift $ ST.gets curChar
       pure $ case mappedChars !? curChar of
@@ -317,54 +321,54 @@ lexStringLiteral = do
 -- | Lexes a symbol, or any other token that can be started by regular symbol characters.
 lexSymbol :: LexerM ()
 lexSymbol = lift $ do
-  ST.modify' setTokenStartPoint
+  ST.modify setTokenStartPoint
   firstChar <- ST.gets curChar
-  ST.modify' nextChar
+  ST.modify nextChar
   secondChar <- ST.gets curChar
   case (firstChar, secondChar) of
     ('-', '-') -> do
       -- More than one - indicates we are at a separator character.
-      whileS_ (\s -> not (atEndOfInput s) && curChar s == '-') (ST.modify' nextChar)
+      whileS_ (\s -> not (atEndOfInput s) && curChar s == '-') (ST.modify nextChar)
       sep <- ST.gets accumulatedString
-      ST.modify' $ addToken $ SeparatorToken sep
+      ST.modify $ addToken $ SeparatorToken sep
     ('-', _) -> lexRegularSymbol
     ('/', '/') -> do
       -- Two / indicate a single-line comment. Just collect until a newline is consumed.
-      whileS_ (\s -> not (atEndOfInput s) && curChar s /= '\n') (ST.modify' nextChar)
+      whileS_ (\s -> not (atEndOfInput s) && curChar s /= '\n') (ST.modify nextChar)
       comment <- ST.gets accumulatedString
-      ST.modify' $ addToken $ CommentToken comment
+      ST.modify $ addToken $ CommentToken comment
       -- Move on to the next line.
-      ST.modify' nextChar
+      ST.modify nextChar
     _ -> lexRegularSymbol
   where
     isSymbolChar c = not $ Char.isSpace c || Char.isAlphaNum c
 
     lexRegularSymbol :: State LexerState ()
     lexRegularSymbol = do
-      whileS_ (\s -> not (atEndOfInput s) && isSymbolChar (curChar s)) (ST.modify' nextChar)
+      whileS_ (\s -> not (atEndOfInput s) && isSymbolChar (curChar s)) (ST.modify nextChar)
       sym <- ST.gets accumulatedString
-      if not $ null sym then ST.modify' $ addToken $ SymbolToken sym else pure ()
+      if not $ null sym then ST.modify $ addToken $ SymbolToken sym else pure ()
 
 -- | Lexes some whitespace, sets whitespaceBefore to the whitespace that was parsed.
 lexWhitespace :: LexerM ()
 lexWhitespace = lift $ do
-  ST.modify' setTokenStartPoint
-  whileS_ consumeMoreWhitespace (ST.modify' nextChar)
+  ST.modify setTokenStartPoint
+  whileS_ consumeMoreWhitespace (ST.modify nextChar)
   accStr <- ST.gets accumulatedString
-  ST.modify' $ setWhitespaceBefore accStr
+  ST.modify $ setWhitespaceBefore accStr
   where
     consumeMoreWhitespace state = not (atEndOfInput state) && isWhitespace (curChar state)
 
 -- | Lexes a newline token.
 lexNewline :: LexerM ()
 lexNewline = lift $ do
-  ST.modify' setTokenStartPoint
+  ST.modify setTokenStartPoint
   prevChar <- ST.gets curChar
-  ST.modify' nextChar
+  ST.modify nextChar
   curChar <- ST.gets curChar
   if prevChar == '\r' && curChar == '\n' then ST.modify nextChar else pure ()
   newlineStr <- ST.gets accumulatedString
-  ST.modify' $ addToken $ EndOfLineToken newlineStr
+  ST.modify $ addToken $ EndOfLineToken newlineStr
 
 -- | Lexes a file into a list of tokens.
 lexFile :: Set String -> FilePath -> String -> Either String [Token]
@@ -388,6 +392,6 @@ lexFile keywords filename input =
       runner :: LexerM [Token]
       runner = do
         whileSE_ (not . atEndOfInput) step
-        lift $ ST.modify' $ addToken EndOfInputToken
+        lift $ ST.modify $ addToken EndOfInputToken
         lift $ ST.gets tokens
    in second reverse $ ST.evalState (runExceptT runner) $ createLexerState input filename
