@@ -35,7 +35,9 @@ executable tlang
   hs-source-dirs:
       src
   default-extensions:
+      DisambiguateRecordFields
       DuplicateRecordFields
+      ScopedTypeVariables
       LambdaCase
       MultiWayIf
       NamedFieldPuns

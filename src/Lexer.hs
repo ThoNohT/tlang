@@ -1,4 +1,20 @@
-module Lexer (Position, Range, Token, TokenData (..), lexFile, ignoreToken) where
+module Lexer
+  ( Position (..),
+    Range (..),
+    Token (..),
+    TokenData (..),
+    rangeFromRanges,
+    lexFile,
+    ignoreToken,
+    tryGetIdentifier,
+    tryGetSymbol,
+    tryGetNumber,
+    tryGetStringLiteral,
+    isEol,
+    isIndentation,
+    isSeparator,
+  )
+where
 
 import Console (Formattable (formatBare), bold, color)
 import Control.Monad (forM_)
@@ -10,12 +26,13 @@ import Core (whileSE, whileSE_, whileS_)
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (isDigit)
 import qualified Data.Char as Char (isAlpha, isAlphaNum, isDigit, isSpace)
-import qualified Data.List as List (uncons)
+import qualified Data.List as List (genericLength, uncons)
 import Data.Map ((!?))
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map (fromList)
 import Data.Set (Set)
 import qualified Data.Set as Set (member)
+import Numeric.Natural (Natural)
 import Text.Printf (printf)
 import Text.Read (readMaybe)
 
@@ -55,9 +72,14 @@ instance Formattable Range where
 rangeFromPositions filename startPos endPos =
   Range {file = filename, startPos, endPos}
 
+-- | Creates a range from a start and end range, using the file from the start range.
+rangeFromRanges :: Range -> Range -> Range
+rangeFromRanges startRange endRange =
+  Range {file = file startRange, startPos = startPos startRange, endPos = endPos endRange}
+
 -- | Encodes all the differnt types of tokens, with their data.
 data TokenData
-  = IndentationToken Int
+  = IndentationToken Natural
   | KeywordToken String -- TODO: Replace KeywordToken with WordToken and let the parser check if a reserved word is used in the spot of an identifier?
   | IdentifierToken String
   | SymbolToken String
@@ -67,7 +89,7 @@ data TokenData
   | EndOfLineToken String
   | EndOfInputToken
   | CommentToken String
-  deriving (Show)
+  deriving (Eq)
 
 -- | Indicates whether the parser should ignore this token.
 ignoreToken :: TokenData -> Bool
@@ -90,15 +112,50 @@ instance Formattable TokenData where
           EndOfInputToken -> ("EndOfInputToken", "")
           CommentToken str -> ("CommentToken ", str)
 
+-- | Returns the value of an identifier in a token, if it is an identifier token, Nothing otherwise.
+tryGetIdentifier :: TokenData -> Maybe String
+tryGetIdentifier (IdentifierToken id) = Just id
+tryGetIdentifier _ = Nothing
+
+-- | Returns Just if the token is a symbol token with the specified symbol, and Nothing o therwise.
+tryGetSymbol :: String -> TokenData -> Maybe String
+tryGetSymbol sym (SymbolToken sym') | sym' == sym = Just sym'
+tryGetSymbol _ _ = Nothing
+
+-- | Returns Just if the token is a symbol token with the specified symbol, and Nothing o therwise.
+tryGetNumber :: TokenData -> Maybe Int
+tryGetNumber (NumberToken num) = Just num
+tryGetNumber _ = Nothing
+
+-- | Returns Just if the token is a symbol token with the specified symbol, and Nothing o therwise.
+tryGetStringLiteral :: TokenData -> Maybe String
+tryGetStringLiteral (StringLiteralToken str) = Just str
+tryGetStringLiteral _ = Nothing
+
+-- | Checks whether the current token is an end of line token.
+isEol :: TokenData -> Bool
+isEol (EndOfLineToken _) = True
+isEol _ = False
+
+-- | Checks whether the current token is an indentation token.
+isIndentation :: TokenData -> Bool
+isIndentation (IndentationToken _) = True
+isIndentation _ = False
+
+-- | Checks whether the current token is a separator token.
+isSeparator :: TokenData -> Bool
+isSeparator (SeparatorToken _) = True
+isSeparator _ = False
+
 data Token = Token
-  { range :: Range,
+  { tokenRange :: Range,
     tData :: TokenData,
     whitespaceBefore :: String
   }
 
 instance Formattable Token where
-  formatBare Token {range, tData, whitespaceBefore} =
-    printf "%s %s, whitespaceBefore: %s" (formatBare range) (formatBare tData) (color 35 $ show whitespaceBefore)
+  formatBare Token {tokenRange, tData, whitespaceBefore} =
+    printf "%s %s, whitespaceBefore: %s" (formatBare tokenRange) (formatBare tData) (color 35 $ show whitespaceBefore)
 
 data LexerState = LexerState
   { filename :: FilePath,
@@ -114,7 +171,7 @@ data LexerState = LexerState
     autoAccumulate :: Bool,
     curChar :: Char,
     startOfLine :: Bool,
-    spacesPerIndent :: Maybe Int,
+    spacesPerIndent :: Maybe Natural,
     whitespaceBefore :: String,
     atEndOfInput :: Bool
   }
@@ -178,7 +235,12 @@ addToken :: TokenData -> LexerState -> LexerState
 addToken tData state@LexerState {tokens, whitespaceBefore, filename, tokenStartPos, prevPos} =
   state {tokens = newToken : tokens, whitespaceBefore = ""}
   where
-    newToken = Token {range = rangeFromPositions filename tokenStartPos prevPos, whitespaceBefore = whitespaceBefore, tData = tData}
+    newToken =
+      Token
+        { tokenRange = rangeFromPositions filename tokenStartPos prevPos,
+          whitespaceBefore = whitespaceBefore,
+          tData = tData
+        }
 
 -- | Returns the accumulated string since the last start point.
 accumulatedString :: LexerState -> String
@@ -247,7 +309,7 @@ lexIndent = do
               checkLexerPredicate ((==) ' ' . curChar) "Leading whitespace may only consist of whitespaces."
               lift $ ST.modify nextChar
           )
-      let nSpaces = length spaces
+      let nSpaces = List.genericLength spaces
       let sOffset = nSpaces `rem` spi'
       let prefix = "Invalid number of leading spaces. Expected a multiple of"
       checkLexerPredicate' (sOffset == 0) $

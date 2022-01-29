@@ -37,6 +37,12 @@ data UncheckedExpression
   | UVariable {range :: Range, variable :: UncheckedVariable, param :: Maybe UncheckedExpression}
   | UBinary {range :: Range, op :: Operator, left :: UncheckedExpression, right :: UncheckedExpression}
 
+-- | Extracts the range from an expression.
+expressionRange :: UncheckedExpression -> Range
+expressionRange UIntLiteral {range} = range
+expressionRange UVariable {range} = range
+expressionRange UBinary {range} = range
+
 instance Formattable UncheckedExpression where
   formatBare (UIntLiteral range int) = printf "%s %s %s" (formatBare range) (bold "UIntLiteral") (color 35 $ show int)
   formatBare (UVariable range var Nothing) = printf "%s %s\n%s" (formatBare range) (bold "UVariable") (format 1 var)

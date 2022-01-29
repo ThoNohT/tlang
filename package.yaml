@@ -30,7 +30,9 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     default-extensions:
+    - DisambiguateRecordFields
     - DuplicateRecordFields
+    - ScopedTypeVariables
     - LambdaCase
     - MultiWayIf
     - NamedFieldPuns
