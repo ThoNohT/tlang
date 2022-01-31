@@ -54,10 +54,21 @@ infixl 3 <||>
 
 (<||>) :: ParserM (Maybe a) -> ParserM (Maybe a) -> ParserM (Maybe a)
 (<||>) a b = do
-  a' <- a
-  case a' of
-    Just a'' -> pure $ Just a''
+  a >>= \case
+    Just a' -> pure $ Just a'
     Nothing -> b
+
+-- | Performs a second parser with the result of the first parser, only if the first parser succeeds.
+infixl 3 ?>>
+
+(?>>) :: ParserM (Maybe a) -> ParserM (Maybe b) -> ParserM (Maybe (a, b))
+(?>>) a b = do
+  a >>= \case
+    Nothing -> pure Nothing
+    Just a'' ->
+      b >>= \case
+        Nothing -> pure Nothing
+        Just b'' -> pure $ Just (a'', b'')
 
 -- | Can be used to check that a Maybe is Just, and if it fails, raise an exception.
 parserAssertJust :: String -> Maybe a -> ParserM a
@@ -208,31 +219,24 @@ tryParseOperator = tryOp "+" Add <||> tryOp "-" Sub
 tryParseExpression :: ParserM (Maybe UncheckedExpression)
 tryParseExpression = tryParseBinary <||> tryParseIntLiteral <||> tryParseVariable
   where
+    restore backup = do
+      lift $ ST.put backup
+      pure Nothing
+
     -- Left side of a binary expression cannot be a recursive expression, to prevent infinite loops.
     tryParseBinary :: ParserM (Maybe UncheckedExpression)
     tryParseBinary = do
       backup <- lift ST.get
-      leftMaybe <- tryParseIntLiteral <||> tryParseVariable
-      case leftMaybe of
-        Nothing -> lift $ do
-          ST.put backup
-          pure Nothing
-        Just left -> do
-          opMaybe <- tryParseOperator
-          case opMaybe of
-            Nothing -> lift $ do
-              ST.put backup
-              pure Nothing
-            Just op -> do
-              rightMaybe <- tryParseExpression
-              case rightMaybe of
-                Nothing -> lift $ do
-                  ST.put backup
-                  pure Nothing
-                Just right -> lift $ do
-                  endToken <- ST.gets prevTkn
-                  let range = rangeFromRanges (tokenRange $ curTkn backup) (tokenRange endToken)
-                  pure $ Just $ UBinary range op left right
+      leftOpRight <-
+        (tryParseIntLiteral <||> tryParseVariable <||> restore backup)
+          ?>> (tryParseOperator <||> restore backup)
+          ?>> (tryParseExpression <||> restore backup)
+      case leftOpRight of
+        Nothing -> pure Nothing
+        Just ((left, op), right) -> lift $ do
+          endToken <- ST.gets prevTkn
+          let range = rangeFromRanges (tokenRange $ curTkn backup) (tokenRange endToken)
+          pure $ Just $ UBinary range op left right
 
     tryParseVariable :: ParserM (Maybe UncheckedExpression)
     tryParseVariable = do
