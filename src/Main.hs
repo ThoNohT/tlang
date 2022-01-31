@@ -30,6 +30,12 @@ compile fileName flags = do
 
   uncheckedProject <- Console.assertRight $ parseProject tokens
 
+  if CompilerFlag.isActive DumpUncheckedSyntaxTree flags
+    then do
+      putStrLn $ Console.formatBare uncheckedProject
+      exitSuccess
+    else pure ()
+
   undefined
 
 -- | Cleans up the intermediary files created while compiling the program.
