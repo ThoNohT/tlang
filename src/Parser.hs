@@ -12,6 +12,8 @@ import Data.Char (isLower)
 import Data.List (uncons)
 import qualified Data.List as List (filter, intercalate, uncons)
 import qualified Data.Maybe as Maybe (isNothing)
+import Data.Text (Text)
+import qualified Data.Text as T
 import Lexer
   ( Range,
     Token (..),

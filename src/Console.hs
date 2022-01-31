@@ -1,3 +1,5 @@
+{-# LANGUAGE NoOverloadedStrings #-}
+
 module Console
   ( color,
     bold,

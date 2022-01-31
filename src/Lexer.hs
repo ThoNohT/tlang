@@ -32,6 +32,8 @@ import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map (fromList)
 import Data.Set (Set)
 import qualified Data.Set as Set (member)
+import Data.Text (Text)
+import qualified Data.Text as T
 import Numeric.Natural (Natural)
 import Text.Printf (printf)
 import Text.Read (readMaybe)
@@ -46,8 +48,8 @@ instance Formattable Position where
   formatBare Position {line, col} = printf "%i:%i" (line + 1) (col + 1)
 
 -- | Converts a position to a string including the specified filename.
-posToFileString :: FilePath -> Position -> String
-posToFileString filename Position {line, col} = printf "%s:%i:%i" filename line col
+posToFileText :: FilePath -> Position -> Text
+posToFileText filename Position {line, col} = T.pack $ printf "%s:%i:%i" filename line col
 
 -- | Initial position.
 zeroPos :: Position
@@ -77,18 +79,18 @@ rangeFromRanges :: Range -> Range -> Range
 rangeFromRanges startRange endRange =
   Range {file = file startRange, startPos = startPos startRange, endPos = endPos endRange}
 
--- | Encodes all the differnt types of tokens, with their data.
+-- | Encodes all the different types of tokens, with their data.
 data TokenData
   = IndentationToken Natural
-  | KeywordToken String -- TODO: Replace KeywordToken with WordToken and let the parser check if a reserved word is used in the spot of an identifier?
-  | IdentifierToken String
-  | SymbolToken String
-  | StringLiteralToken String
+  | KeywordToken Text -- TODO: Replace KeywordToken with WordToken and let the parser check if a reserved word is used in the spot of an identifier?
+  | IdentifierToken Text
+  | SymbolToken Text
+  | StringLiteralToken Text
   | NumberToken Int
-  | SeparatorToken String
-  | EndOfLineToken String
+  | SeparatorToken Text
+  | EndOfLineToken Text
   | EndOfInputToken
-  | CommentToken String
+  | CommentToken Text
   deriving (Eq)
 
 -- | Indicates whether the parser should ignore this token.
@@ -102,33 +104,33 @@ instance Formattable TokenData where
       tuple =
         case td of
           IndentationToken ind -> ("IndentationToken ", show ind)
-          KeywordToken kw -> ("KeywordToken ", kw)
-          IdentifierToken id -> ("IdentifierToken ", id)
-          SymbolToken sym -> ("SymbolToken ", sym)
+          KeywordToken kw -> ("KeywordToken ", T.unpack kw)
+          IdentifierToken id -> ("IdentifierToken ", T.unpack id)
+          SymbolToken sym -> ("SymbolToken ", T.unpack sym)
           StringLiteralToken str -> ("StringLiteralToken ", show str)
           NumberToken num -> ("NumberToken ", show num)
-          SeparatorToken sep -> ("SeparatorToken ", sep)
+          SeparatorToken sep -> ("SeparatorToken ", T.unpack sep)
           EndOfLineToken eol -> ("EndOfLineToken ", show eol)
           EndOfInputToken -> ("EndOfInputToken", "")
-          CommentToken str -> ("CommentToken ", str)
+          CommentToken str -> ("CommentToken ", T.unpack str)
 
 -- | Returns the value of an identifier in a token, if it is an identifier token, Nothing otherwise.
-tryGetIdentifier :: TokenData -> Maybe String
+tryGetIdentifier :: TokenData -> Maybe Text
 tryGetIdentifier (IdentifierToken id) = Just id
 tryGetIdentifier _ = Nothing
 
--- | Returns Just if the token is a symbol token with the specified symbol, and Nothing o therwise.
-tryGetSymbol :: String -> TokenData -> Maybe String
+-- | Returns Just if the token is a symbol token with the specified symbol, and Nothing otherwise.
+tryGetSymbol :: Text -> TokenData -> Maybe Text
 tryGetSymbol sym (SymbolToken sym') | sym' == sym = Just sym'
 tryGetSymbol _ _ = Nothing
 
--- | Returns Just if the token is a symbol token with the specified symbol, and Nothing o therwise.
+-- | Returns Just if the token is a symbol token with the specified symbol, and Nothing otherwise.
 tryGetNumber :: TokenData -> Maybe Int
 tryGetNumber (NumberToken num) = Just num
 tryGetNumber _ = Nothing
 
--- | Returns Just if the token is a symbol token with the specified symbol, and Nothing o therwise.
-tryGetStringLiteral :: TokenData -> Maybe String
+-- | Returns Just if the token is a symbol token with the specified symbol, and Nothing otherwise.
+tryGetStringLiteral :: TokenData -> Maybe Text
 tryGetStringLiteral (StringLiteralToken str) = Just str
 tryGetStringLiteral _ = Nothing
 
@@ -150,7 +152,7 @@ isSeparator _ = False
 data Token = Token
   { tokenRange :: Range,
     tData :: TokenData,
-    whitespaceBefore :: String
+    whitespaceBefore :: Text
   }
 
 instance Formattable Token where
@@ -159,7 +161,7 @@ instance Formattable Token where
 
 data LexerState = LexerState
   { filename :: FilePath,
-    input :: String,
+    input :: Text,
     -- Positions
     pos :: Position,
     prevPos :: Position,
@@ -167,17 +169,17 @@ data LexerState = LexerState
     -- Output
     tokens :: [Token],
     -- Other state.
-    accumulator :: String,
+    accumulator :: Text,
     autoAccumulate :: Bool,
     curChar :: Char,
     startOfLine :: Bool,
     spacesPerIndent :: Maybe Natural,
-    whitespaceBefore :: String,
+    whitespaceBefore :: Text,
     atEndOfInput :: Bool
   }
 
 -- | Creates a lexer state from the specified input and filename.
-createLexerState :: String -> FilePath -> LexerState
+createLexerState :: Text -> FilePath -> LexerState
 createLexerState input filename =
   LexerState
     { filename,
@@ -186,7 +188,7 @@ createLexerState input filename =
       prevPos = zeroPos,
       tokenStartPos = zeroPos,
       tokens = [],
-      accumulator = [],
+      accumulator = "",
       autoAccumulate = True,
       curChar = firstChar,
       startOfLine = True,
@@ -196,7 +198,7 @@ createLexerState input filename =
     }
   where
     (atEndOfInput, (firstChar, sanitizedInput)) =
-      maybe (True, ('\0', [])) (False,) $ List.uncons input
+      maybe (True, ('\0', "")) (False,) $ T.uncons input
 
 -- | Moves to the next character in the lexer state.
 --   If autoAccumulate is enabled then the tokens will be added to accumulator, until the end of the input is reached.
@@ -210,7 +212,7 @@ nextChar state =
 
       -- Sets curChar to the next character.
       setNextChar :: LexerState -> LexerState
-      setNextChar state = case List.uncons $ input state of
+      setNextChar state = case T.uncons $ input state of
         Just (nextChar, input') ->
           let newState = state {curChar = nextChar, input = input'}
            in if autoAccumulate state then accumulateChar (curChar state) newState else newState
@@ -222,10 +224,10 @@ nextChar state =
 -- | Sets the token start position to the current position.
 --   This position will be the start position for the next token added to the output.
 setTokenStartPoint :: LexerState -> LexerState
-setTokenStartPoint state = state {tokenStartPos = pos state, accumulator = []}
+setTokenStartPoint state = state {tokenStartPos = pos state, accumulator = ""}
 
 -- | Sets the whitespaceBefore field to the specified value.
-setWhitespaceBefore :: String -> LexerState -> LexerState
+setWhitespaceBefore :: Text -> LexerState -> LexerState
 setWhitespaceBefore value state = state {whitespaceBefore = value}
 
 -- | Adds a token to the output list.
@@ -243,8 +245,8 @@ addToken tData state@LexerState {tokens, whitespaceBefore, filename, tokenStartP
         }
 
 -- | Returns the accumulated string since the last start point.
-accumulatedString :: LexerState -> String
-accumulatedString LexerState {accumulator} = reverse accumulator
+accumulatedText :: LexerState -> Text
+accumulatedText LexerState {accumulator} = T.reverse accumulator
 
 -- | Sets autoAccumulate to the specified value.
 setAutoAccumulate :: Bool -> LexerState -> LexerState
@@ -252,33 +254,33 @@ setAutoAccumulate val state = state {autoAccumulate = val}
 
 -- | Adds a character to the accumulator.
 accumulateChar :: Char -> LexerState -> LexerState
-accumulateChar val state@LexerState {accumulator} = state {accumulator = val : accumulator}
+accumulateChar val state@LexerState {accumulator} = state {accumulator = T.cons val accumulator}
 
--- | Except transformer with State for LexerState and String error.
-type LexerM a = ExceptT String (State LexerState) a
+-- | Except transformer with State for LexerState and Text error.
+type LexerM a = ExceptT Text (State LexerState) a
 
 -- | Can be used to check a predicate based on the current state, and if it fails, raise an exception,
 --   including some location data.
-checkLexerPredicate :: (LexerState -> Bool) -> String -> LexerM ()
+checkLexerPredicate :: (LexerState -> Bool) -> Text -> LexerM ()
 checkLexerPredicate pred msg = do
   s <- lift ST.get
   if pred s
     then pure ()
-    else throwE $ printf "%s: Lexer error: %s" (posToFileString (filename s) (pos s)) msg
+    else throwE $ T.pack $ printf "%s: Lexer error: %s" (posToFileText (filename s) (pos s)) msg
 
 -- | Can be used to check a predicate, and if it fails, raise an exception, including some location data.
-checkLexerPredicate' :: Bool -> String -> LexerM ()
+checkLexerPredicate' :: Bool -> Text -> LexerM ()
 checkLexerPredicate' True msg = pure ()
 checkLexerPredicate' False msg = do
   s <- lift ST.get
-  throwE $ printf "%s: Lexer error: %s" (posToFileString (filename s) (pos s)) msg
+  throwE $ T.pack $ printf "%s: Lexer error: %s" (posToFileText (filename s) (pos s)) msg
 
 -- | Can be used to check that a Maybe is Just, and if it fails, raise an exception, including some location data.
-lexerAssertJust :: Maybe a -> String -> LexerM a
+lexerAssertJust :: Maybe a -> Text -> LexerM a
 lexerAssertJust (Just val) msg = pure val
 lexerAssertJust Nothing msg = do
   s <- lift ST.get
-  throwE $ printf "%s: Lexer error: %s" (posToFileString (filename s) (pos s)) msg
+  throwE $ T.pack $ printf "%s: Lexer error: %s" (posToFileText (filename s) (pos s)) msg
 
 -- | Lexes an indentation token, consisting of spaces at the sart of a line.
 --   Only allows spaces as indentation. The lexer will fail when it encounters any other whitespace character,
@@ -311,9 +313,9 @@ lexIndent = do
           )
       let nSpaces = List.genericLength spaces
       let sOffset = nSpaces `rem` spi'
-      let prefix = "Invalid number of leading spaces. Expected a multiple of"
+      let prefix = T.pack "Invalid number of leading spaces. Expected a multiple of"
       checkLexerPredicate' (sOffset == 0) $
-        printf "%s %i, but got %i, which %i too many or %i too few." prefix spi' nSpaces sOffset (spi' - sOffset)
+        T.pack $ printf "%s %i, but got %i, which %i too many or %i too few." prefix spi' nSpaces sOffset (spi' - sOffset)
       lift $ ST.modify $ addToken $ IndentationToken (nSpaces `div` spi')
 
 -- | Lexes a number, simply a token with a value as long as the characters are numeric.
@@ -321,18 +323,18 @@ lexNumber :: LexerM ()
 lexNumber = do
   lift $ ST.modify setTokenStartPoint
   lift $ whileS_ (\s -> not (atEndOfInput s) && isDigit (curChar s)) (ST.modify nextChar)
-  nrStr <- lift $ ST.gets accumulatedString
-  let nrMaybe = readMaybe nrStr :: Maybe Int
+  nrStr <- lift $ ST.gets accumulatedText
+  let nrMaybe = readMaybe (T.unpack nrStr) :: Maybe Int
   nr <- lexerAssertJust nrMaybe "Failed to parse a number."
   lift $ ST.modify $ addToken $ NumberToken nr
 
 -- | Lexes an identifier or a keyword, consumes characters as long as they are alphanumeric. If the resulting name is
 --   contained in the set of keywords, a keyword token is added, otherwise an identifier token is added.
-lexIdentifier :: Set String -> LexerM ()
+lexIdentifier :: Set Text -> LexerM ()
 lexIdentifier keywords = lift $ do
   ST.modify setTokenStartPoint
   whileS_ (\s -> not (atEndOfInput s) && Char.isAlphaNum (curChar s)) (ST.modify nextChar)
-  id <- ST.gets accumulatedString
+  id <- ST.gets accumulatedText
   ST.modify $ addToken $ if Set.member id keywords then KeywordToken id else IdentifierToken id
 
 -- | Lexes a string literal.
@@ -349,7 +351,7 @@ lexStringLiteral = do
         if curChar == '\\'
           then do
             escapedStr <- lexEscapedChar
-            lift $ forM_ escapedStr (ST.modify . accumulateChar)
+            lift $ forM_ (T.unpack escapedStr) (ST.modify . accumulateChar)
           else lift $ ST.modify $ accumulateChar curChar
 
         lift $ ST.modify nextChar
@@ -357,7 +359,7 @@ lexStringLiteral = do
 
   assertNotAtEnd ""
   lift $ ST.modify nextChar
-  str <- lift $ ST.gets accumulatedString
+  str <- lift $ ST.gets accumulatedText
   lift $ ST.modify $ addToken $ StringLiteralToken str
 
   lift $ ST.modify $ setAutoAccumulate True
@@ -366,19 +368,19 @@ lexStringLiteral = do
     mappedChars =
       Map.fromList [('\\', '\\'), ('/', '/'), ('b', '\x08'), ('f', '\x0c'), ('n', '\n'), ('r', '\r'), ('t', '\t')]
 
-    lexEscapedChar :: LexerM String
+    lexEscapedChar :: LexerM Text
     lexEscapedChar = do
       lift $ ST.modify nextChar
       assertNotAtEnd "escaped character in "
       curChar <- lift $ ST.gets curChar
       pure $ case mappedChars !? curChar of
-        Just mc -> [mc]
-        Nothing -> ['\\', curChar]
+        Just mc -> T.singleton mc
+        Nothing -> T.pack ['\\', curChar]
 
     assertNotAtEnd subject =
       checkLexerPredicate
         (not . atEndOfInput)
-        $ printf "Input ended before %sstring literal ended." subject
+        $ T.pack $ printf "Input ended before %sstring literal ended." (T.unpack subject)
 
 -- | Lexes a symbol, or any other token that can be started by regular symbol characters.
 lexSymbol :: LexerM ()
@@ -391,13 +393,13 @@ lexSymbol = lift $ do
     ('-', '-') -> do
       -- More than one - indicates we are at a separator character.
       whileS_ (\s -> not (atEndOfInput s) && curChar s == '-') (ST.modify nextChar)
-      sep <- ST.gets accumulatedString
+      sep <- ST.gets accumulatedText
       ST.modify $ addToken $ SeparatorToken sep
     ('-', _) -> lexRegularSymbol
     ('/', '/') -> do
       -- Two / indicate a single-line comment. Just collect until a newline is consumed.
       whileS_ (\s -> not (atEndOfInput s) && curChar s /= '\n') (ST.modify nextChar)
-      comment <- ST.gets accumulatedString
+      comment <- ST.gets accumulatedText
       ST.modify $ addToken $ CommentToken comment
       -- Move on to the next line.
       ST.modify nextChar
@@ -408,15 +410,15 @@ lexSymbol = lift $ do
     lexRegularSymbol :: State LexerState ()
     lexRegularSymbol = do
       whileS_ (\s -> not (atEndOfInput s) && isSymbolChar (curChar s)) (ST.modify nextChar)
-      sym <- ST.gets accumulatedString
-      if not $ null sym then ST.modify $ addToken $ SymbolToken sym else pure ()
+      sym <- ST.gets accumulatedText
+      if not $ T.null sym then ST.modify $ addToken $ SymbolToken sym else pure ()
 
 -- | Lexes some whitespace, sets whitespaceBefore to the whitespace that was parsed.
 lexWhitespace :: LexerM ()
 lexWhitespace = lift $ do
   ST.modify setTokenStartPoint
   whileS_ consumeMoreWhitespace (ST.modify nextChar)
-  accStr <- ST.gets accumulatedString
+  accStr <- ST.gets accumulatedText
   ST.modify $ setWhitespaceBefore accStr
   where
     consumeMoreWhitespace state = not (atEndOfInput state) && isWhitespace (curChar state)
@@ -429,11 +431,11 @@ lexNewline = lift $ do
   ST.modify nextChar
   curChar <- ST.gets curChar
   if prevChar == '\r' && curChar == '\n' then ST.modify nextChar else pure ()
-  newlineStr <- ST.gets accumulatedString
+  newlineStr <- ST.gets accumulatedText
   ST.modify $ addToken $ EndOfLineToken newlineStr
 
 -- | Lexes a file into a list of tokens.
-lexFile :: Set String -> FilePath -> String -> Either String [Token]
+lexFile :: Set Text -> FilePath -> Text -> Either Text [Token]
 lexFile keywords filename input = second reverse $ ST.evalState (runExceptT runner) $ createLexerState input filename
   where
     -- One step in the global lexer process. Matches against the next symbol and then calls the appropriate sub lexer.

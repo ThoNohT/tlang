@@ -3,9 +3,12 @@ module Main where
 import CompilerFlag (BuildFlag (..), CleanFlag (..))
 import qualified CompilerFlag (accumulate, isActive)
 import qualified Console (assertJustWithUsageError, assertRight, exitWithUsageError, formatBare, getFlagsOrExit, runCmdEchoed)
+import Data.Bifunctor (Bifunctor (first, second))
 import qualified Data.List as List (uncons)
 import Data.Set (Set)
 import qualified Data.Set as Set (fromList)
+import Data.Text (Text)
+import qualified Data.Text as T
 import Lexer (lexFile)
 import Parser (parseProject)
 import System.Environment (getArgs, getProgName)
@@ -13,14 +16,14 @@ import System.Exit (exitSuccess)
 import Text.Printf (printf)
 
 -- | All keywords in the language.
-keywords :: Set String
+keywords :: Set Text
 keywords = Set.fromList ["Executable", "let", "print", "return"]
 
 -- | Compiles the project in the specified file. Returns the file path to the executable that was compiled.
 compile :: FilePath -> Set BuildFlag -> IO FilePath
 compile fileName flags = do
   input <- readFile fileName
-  tokens <- Console.assertRight $ lexFile keywords fileName input
+  tokens <- Console.assertRight $ first T.unpack $ lexFile keywords fileName $ T.pack input
 
   if CompilerFlag.isActive DumpLexerTokens flags
     then do

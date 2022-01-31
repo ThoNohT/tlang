@@ -44,8 +44,10 @@ executables:
     - MonoLocalBinds
     - GeneralizedNewtypeDeriving
     - DerivingVia
+    - OverloadedStrings
     dependencies:
     - containers
     - process
     - transformers
     - monad-loops
+    - text

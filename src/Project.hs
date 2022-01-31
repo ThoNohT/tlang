@@ -2,6 +2,8 @@ module Project where
 
 import Console (Formattable (formatBare), bold, color, format)
 import qualified Data.List as List
+import Data.Text (Text)
+import qualified Data.Text as T
 import Lexer (Range)
 import Text.Printf (printf)
 
@@ -13,24 +15,24 @@ instance Formattable Operator where
   formatBare (Add range) = printf "%s %s" (formatBare range) (bold "Add")
   formatBare (Sub range) = printf "%s %s" (formatBare range) (bold "Sub")
 
-data ProjectType = Executable {range :: Range, name :: String}
+data ProjectType = Executable {range :: Range, name :: Text}
 
 instance Formattable ProjectType where
-  formatBare (Executable range name) = printf "%s %s %s" (formatBare range) (bold "Executable") (color 35 name)
+  formatBare (Executable range name) = printf "%s %s %s" (formatBare range) (bold "Executable") (color 35 (T.unpack name))
 
 {- UnheckedProject -}
 
-data UncheckedStringLiteral = UncheckedStringLiteral {range :: Range, string :: String}
+data UncheckedStringLiteral = UncheckedStringLiteral {range :: Range, string :: Text}
 
 instance Formattable UncheckedStringLiteral where
   formatBare (UncheckedStringLiteral range string) =
-    printf "%s %s \"%s\"" (formatBare range) (bold "UncheckedStringLiteral") (color 35 string)
+    printf "%s %s \"%s\"" (formatBare range) (bold "UncheckedStringLiteral") (color 35 $ T.unpack string)
 
-data UncheckedVariable = UncheckedVariable {range :: Range, name :: String}
+data UncheckedVariable = UncheckedVariable {range :: Range, name :: Text}
 
 instance Formattable UncheckedVariable where
   formatBare (UncheckedVariable range name) =
-    printf "%s %s %s" (formatBare range) (bold "UncheckedVariable") (color 35 name)
+    printf "%s %s %s" (formatBare range) (bold "UncheckedVariable") (color 35 $ T.unpack name)
 
 data UncheckedExpression
   = UIntLiteral {range :: Range, int :: Int}
