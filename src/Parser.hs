@@ -48,6 +48,8 @@ nextToken state@ParserState {input, curTkn, nxtTkn} =
 -- | Except transformer with State for ParserState and String error.
 type ParserM a = ExceptT String (State ParserState) a
 
+-- | Alternative operator for ParserM, since <|> will operate on the ExceptT transformer, and not on a Maybe inside
+--   the parse result.
 infixl 3 <||>
 
 (<||>) :: ParserM (Maybe a) -> ParserM (Maybe a) -> ParserM (Maybe a)
