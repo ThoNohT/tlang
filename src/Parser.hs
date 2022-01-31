@@ -1,12 +1,16 @@
 module Parser (parseProject) where
 
 import Console (Formattable (formatBare))
+import Control.Applicative (Alternative (empty, (<|>)))
 import Control.Monad.Loops (whileJust, whileM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import Control.Monad.Trans.State (State)
 import qualified Control.Monad.Trans.State.Lazy as ST (evalState, get, gets, modify, put)
-import qualified Data.List as List (filter, uncons)
+import Data.Bifunctor (Bifunctor (first))
+import Data.Char (isLower)
+import Data.List (uncons)
+import qualified Data.List as List (filter, intercalate, uncons)
 import qualified Data.Maybe as Maybe (isNothing)
 import Lexer
   ( Range,
@@ -57,6 +61,8 @@ infixl 3 <||>
   a >>= \case
     Just a' -> pure $ Just a'
     Nothing -> b
+
+-- | Performs a second parser with the result of the first parser, only if the first parser succeeds.
 
 -- | Performs a second parser with the result of the first parser, only if the first parser succeeds.
 infixl 3 ?>>
@@ -353,3 +359,52 @@ parseProject input =
       checkAndNext ((== EndOfInputToken) . tData) "project"
 
       pure $ UncheckedProject projectType program
+
+data ParseResult a = Success a | Failure String | Ignore deriving (Show)
+
+instance Functor ParseResult where
+  fmap f (Success a) = Success $ f a
+  fmap _ (Failure err) = Failure err
+  fmap _ Ignore = Ignore
+
+instance Applicative ParseResult where
+  pure = Success
+  (<*>) (Success f) a = fmap f a
+  (<*>) (Failure err1) (Failure err2) = Failure (List.intercalate "\n" [err1, err2])
+  (<*>) (Failure err) _ = Failure err
+  (<*>) _ (Failure err) = Failure err
+  (<*>) _ _ = Ignore
+
+instance Alternative ParseResult where
+  empty = Ignore
+  (<|>) (Success a) _ = Success a
+  (<|>) (Failure err) _ = Failure err
+  (<|>) Ignore b = b
+
+instance Monad ParseResult where
+  (>>=) (Success a) f = f a
+  (>>=) (Failure err) f = Failure err
+  (>>=) Ignore f = Ignore
+
+newtype Parser s a = Parser {runParser :: s -> ParseResult (a, s)}
+
+deriving instance Functor (Parser s)
+
+instance Applicative (Parser s) where
+  pure a = Parser $ pure . (a,)
+  (<*>) (Parser f) (Parser a) = Parser $ \s ->
+    case f s of
+      Ignore -> Ignore
+      Failure err -> Failure err
+      Success (f', s') -> first f' <$> a s'
+
+instance Alternative (Parser s) where
+  empty = Parser $ const Ignore
+  (<|>) (Parser a) (Parser b) = Parser $ \s -> a s <|> b s
+
+instance Monad (Parser s) where
+  (>>=) (Parser a) f = Parser $ \s ->
+    case a s of
+      Ignore -> Ignore
+      Failure err -> Failure err
+      Success (a', s') -> runParser (f a') s'

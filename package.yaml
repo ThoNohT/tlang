@@ -37,6 +37,13 @@ executables:
     - MultiWayIf
     - NamedFieldPuns
     - TupleSections
+    - FlexibleContexts
+    - UndecidableInstances
+    - StandaloneDeriving
+    - DeriveFunctor
+    - MonoLocalBinds
+    - GeneralizedNewtypeDeriving
+    - DerivingVia
     dependencies:
     - containers
     - process
