@@ -1,7 +1,6 @@
 module Parser (parseProject) where
 
 import Console (Formattable (formatBare))
-import Control.Applicative (Alternative ((<|>)))
 import Control.Monad.Loops (whileJust, whileM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
@@ -45,6 +44,18 @@ nextToken state@ParserState {input, curTkn, nxtTkn} =
   case List.uncons input of
     Just (next', input') -> state {prevTkn = curTkn, curTkn = nxtTkn, nxtTkn = next', input = input'}
     Nothing -> state {prevTkn = curTkn, curTkn = nxtTkn}
+
+-- | Except transformer with State for ParserState and String error.
+type ParserM a = ExceptT String (State ParserState) a
+
+infixl 3 <||>
+
+(<||>) :: ParserM (Maybe a) -> ParserM (Maybe a) -> ParserM (Maybe a)
+(<||>) a b = do
+  a' <- a
+  case a' of
+    Just a'' -> pure $ Just a''
+    Nothing -> b
 
 -- | Can be used to check that a Maybe is Just, and if it fails, raise an exception.
 parserAssertJust :: String -> Maybe a -> ParserM a
@@ -92,9 +103,6 @@ consume f label = do
 --   If the check returns Nothing, returns an error that parsing the entity with the provided label failed.
 consume' :: (Token -> Maybe a) -> String -> ParserM a
 consume' f label = fst <$> consume f label
-
--- | Except transformer with State for ParserState and String error.
-type ParserM a = ExceptT String (State ParserState) a
 
 -- | Consumes an end of line token.
 consumeEol :: String -> ParserM ()
@@ -164,7 +172,7 @@ tryParsePrintStmt = do
       strLitMaybe <- lift $ fmap (\(s, r) -> UncheckedStringLiteral r s) <$> tryConsume (tryGetStringLiteral . tData)
       exprMaybe <- tryParseExpression
 
-      endToken <- lift $ ST.gets curTkn
+      endToken <- lift $ ST.gets prevTkn
       let range = rangeFromRanges (tokenRange startToken) (tokenRange endToken)
 
       case (strLitMaybe, exprMaybe) of
@@ -189,20 +197,20 @@ tryParseNumber = do
 
 -- | Tries to parse an operator. Only consumes if an operator was parsed.
 tryParseOperator :: ParserM (Maybe Operator)
-tryParseOperator = tryOp "+" Add <|> tryOp "-" Sub
+tryParseOperator = tryOp "+" Add <||> tryOp "-" Sub
   where
     tryOp sym typ = lift $ fmap (\(_, r) -> typ r) <$> tryConsume (tryGetSymbol sym . tData)
 
 -- | Tries to parse an expression. Returns None if all of the expression components return None, and fails if one of
 --   the invoked sub parsers fails:
 tryParseExpression :: ParserM (Maybe UncheckedExpression)
-tryParseExpression = tryParseBinary <|> tryParseIntLiteral <|> tryParseVariable
+tryParseExpression = tryParseBinary <||> tryParseIntLiteral <||> tryParseVariable
   where
     -- Left side of a binary expression cannot be a recursive expression, to prevent infinite loops.
     tryParseBinary :: ParserM (Maybe UncheckedExpression)
     tryParseBinary = do
       backup <- lift ST.get
-      leftMaybe <- tryParseIntLiteral <|> tryParseVariable
+      leftMaybe <- tryParseIntLiteral <||> tryParseVariable
       case leftMaybe of
         Nothing -> lift $ do
           ST.put backup
@@ -309,11 +317,10 @@ tryParseStatement indent = do
   if not indentIsCorrect
     then pure Nothing
     else do
-      stmtMaybe <- tryParsePrintStmt <|> tryParseAssignmentStmt indent <|> tryParseReturnStmt
-
+      stmtMaybe <- tryParsePrintStmt <||> tryParseAssignmentStmt indent <||> tryParseReturnStmt
       case stmtMaybe of
-        Nothing -> lift $ do
-          ST.put backup
+        Nothing -> do
+          lift $ ST.put backup
           pure Nothing
         Just (stmt, eols) -> do
           if eols then consumeEols "statement" else pure ()
