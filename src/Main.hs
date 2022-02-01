@@ -10,7 +10,7 @@ import qualified Data.Set as Set (fromList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Lexer (lexFile)
-import Parser (parseProject)
+import qualified Parser as P
 import System.Environment (getArgs, getProgName)
 import System.Exit (exitSuccess)
 import Text.Printf (printf)
@@ -31,7 +31,7 @@ compile fileName flags = do
       exitSuccess
     else pure ()
 
-  uncheckedProject <- Console.assertRight $ parseProject tokens
+  uncheckedProject <- Console.assertRight $ P.run P.projectParser tokens
 
   if CompilerFlag.isActive DumpUncheckedSyntaxTree flags
     then do
