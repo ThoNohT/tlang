@@ -11,7 +11,6 @@ module Lexer
     tryGetNumber,
     tryGetStringLiteral,
     isEol,
-    isIndentation,
     isSeparator,
   )
 where
@@ -138,11 +137,6 @@ tryGetStringLiteral _ = Nothing
 isEol :: TokenData -> Bool
 isEol (EndOfLineToken _) = True
 isEol _ = False
-
--- | Checks whether the current token is an indentation token.
-isIndentation :: TokenData -> Bool
-isIndentation (IndentationToken _) = True
-isIndentation _ = False
 
 -- | Checks whether the current token is a separator token.
 isSeparator :: TokenData -> Bool

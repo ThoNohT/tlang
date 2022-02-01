@@ -2,16 +2,8 @@ module Parser (Parser, projectParser, run) where
 
 import Console (Formattable (formatBare))
 import Control.Applicative (Alternative (empty, many, (<|>)), optional)
-import Control.Monad.Loops (whileJust, whileM_)
-import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import Control.Monad.Trans.State (State)
-import qualified Control.Monad.Trans.State.Lazy as ST (evalState, get, gets, modify, put)
-import Data.Bifunctor (Bifunctor (first, second))
-import Data.Char (isLower)
-import Data.List (uncons)
-import qualified Data.List as List (filter, intercalate, uncons)
-import qualified Data.Maybe as Maybe (isNothing)
+import Data.Bifunctor (Bifunctor (first))
+import qualified Data.List as List (filter, uncons)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Lexer
@@ -20,7 +12,6 @@ import Lexer
     TokenData (..),
     ignoreToken,
     isEol,
-    isIndentation,
     isSeparator,
     rangeFromRanges,
     tryGetIdentifier,
