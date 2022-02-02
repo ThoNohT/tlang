@@ -25,17 +25,19 @@ compile fileName flags = do
   input <- readFile fileName
   tokens <- Console.assertRight $ first T.unpack $ lexFile keywords fileName $ T.pack input
 
+  let useColor = not $ CompilerFlag.isActive NoColor flags
+
   if CompilerFlag.isActive DumpLexerTokens flags
     then do
-      putStr $ unlines $ fmap (Console.formatBare True) tokens
+      putStr $ unlines $ fmap (Console.formatBare useColor) tokens
       exitSuccess
     else pure ()
 
-  uncheckedProject <- Console.assertRight $ P.run P.projectParser tokens
+  uncheckedProject <- Console.assertRight $ P.run P.projectParser useColor tokens
 
   if CompilerFlag.isActive DumpUncheckedSyntaxTree flags
     then do
-      putStrLn $ Console.formatBare True uncheckedProject
+      putStrLn $ Console.formatBare useColor uncheckedProject
       exitSuccess
     else pure ()
 

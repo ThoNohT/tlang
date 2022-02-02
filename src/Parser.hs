@@ -28,12 +28,12 @@ import Text.Printf (printf)
 
 {- ParserState -}
 
-data ParserState = ParserState {input :: [Token], curTkn :: Token, prevTkn :: Token}
+data ParserState = ParserState {uc :: Bool, input :: [Token], curTkn :: Token, prevTkn :: Token}
 
-createParserState :: [Token] -> Either String ParserState
-createParserState tokens =
+createParserState :: Bool -> [Token] -> Either String ParserState
+createParserState useColor tokens =
   case List.uncons tokens of
-    Just (cur, tail) -> Right $ ParserState {input = tail, prevTkn = cur, curTkn = cur}
+    Just (cur, tail) -> Right $ ParserState {uc = useColor, input = tail, prevTkn = cur, curTkn = cur}
     _ -> Left "Error parsing, no input."
 
 -- | Moves to the next token in the input.
@@ -113,8 +113,8 @@ gets f = f <$> get
 type Parser' = Parser ParserState
 
 -- | Alias for shorter for matting.
-fb :: Formattable a => a -> String
-fb = formatBare False
+fb :: Formattable a => Bool -> a -> String
+fb = formatBare
 
 -- | Alias for tokenToFileText.
 tft :: Token -> Text
@@ -125,9 +125,9 @@ rft :: Range -> Text
 rft = rangeToFileText
 
 -- | Runs a parser on the specified list of tokens.
-run :: Parser' a -> [Token] -> Either String a
-run (Parser p) input =
-  fst <$> (parseResultToEither . p =<< createParserState (List.filter (not . ignoreToken . tData) input))
+run :: Parser' a -> Bool -> [Token] -> Either String a
+run (Parser p) useColor input =
+  fst <$> (parseResultToEither . p =<< createParserState useColor (List.filter (not . ignoreToken . tData) input))
 
 -- | Returns the next token from the input. Will be an EndOfInputToken every time once the end of the input has been
 --   reached.
@@ -140,9 +140,10 @@ pToken = Parser $ \s ->
 consumeExact :: TokenData -> String -> Parser' TokenData
 consumeExact toConsume label = do
   tkn <- pToken
+  uc <- gets uc
   if tData tkn == toConsume
     then pure $ tData tkn
-    else pfail $ printf "%s: Parsing %s failed, expected %s, but got %s." (tft tkn) label (fb toConsume) (fb $ tData tkn)
+    else pfail $ printf "%s: Parsing %s failed, expected %s, but got %s." (tft tkn) label (fb uc toConsume) (fb uc $ tData tkn)
 
 -- | A parser that succeeds if the mapping on the consumed token returns Just, and fails otherwise.
 consumeJust :: (TokenData -> Maybe a) -> String -> Parser' a
@@ -151,10 +152,11 @@ consumeJust f label = fst <$> consumeJust' f label
 -- | consumeJust but also returns the token's range.
 consumeJust' :: (TokenData -> Maybe a) -> String -> Parser' (a, Range)
 consumeJust' f label = do
+  uc <- gets uc
   tkn <- pToken
   case f $ tData tkn of
     Just a -> pure (a, tokenRange tkn)
-    Nothing -> pfail $ printf "%s: Parsing %s failed, unexpected %s." (tft tkn) label (fb $ tData tkn)
+    Nothing -> pfail $ printf "%s: Parsing %s failed, unexpected %s." (tft tkn) label (fb uc $ tData tkn)
 
 -- | A parser that succeeds if the check on the consumed token returns True, and fails otherwise.
 consumeIf :: (TokenData -> Bool) -> String -> Parser' ()
@@ -295,6 +297,7 @@ printStmtParserM = do
   strLitAndRangeMaybe <- optional $ tryConsumeJust' tryGetStringLiteral
   exprMaybe <- optional expressionParserM
 
+  uc <- gets uc
   end <- gets (tokenRange . prevTkn)
   let range = rangeFromRanges start end
   case (strLitAndRangeMaybe, exprMaybe) of
@@ -305,7 +308,7 @@ printStmtParserM = do
         printf
           "%s: Error parsing a print statement, expected a string literal or expression, but got %s."
           (tft nextToken)
-          (fb nextToken)
+          (fb uc nextToken)
 
 -- | A parser for anassignment statement. Returns Ignore if the let keyword cannot be parsed,
 --   fails if anything later fails.
