@@ -2,6 +2,7 @@ module Parser (Parser, projectParser, run) where
 
 import Console (Formattable (formatBare))
 import Control.Applicative (Alternative (empty, many, (<|>)), optional)
+import Control.Monad ((>=>))
 import Data.Bifunctor (Bifunctor (first))
 import qualified Data.List as List (filter, uncons)
 import Data.Text (Text)
@@ -52,7 +53,7 @@ instance Functor ParseResult where
 
 instance Applicative ParseResult where
   pure = Success
-  (<*>) (Success f) a = fmap f a
+  (<*>) (Success f) a = f <$> a
   (<*>) (Failure err1) (Failure err2) = Failure (T.intercalate "\n" [err1, err2])
   (<*>) (Failure err) _ = Failure err
   (<*>) _ (Failure err) = Failure err
@@ -81,22 +82,14 @@ deriving instance Functor (Parser s)
 
 instance Applicative (Parser s) where
   pure a = Parser $ pure . (a,)
-  (<*>) (Parser f) (Parser a) = Parser $ \s ->
-    case f s of
-      Ignore -> Ignore
-      Failure err -> Failure err
-      Success (f', s') -> first f' <$> a s'
+  (<*>) (Parser f) (Parser a) = Parser $ f >=> (\(f', s') -> first f' <$> a s')
 
 instance Alternative (Parser s) where
   empty = Parser $ const Ignore
   (<|>) (Parser a) (Parser b) = Parser $ \s -> a s <|> b s
 
 instance Monad (Parser s) where
-  (>>=) (Parser a) f = Parser $ \s ->
-    case a s of
-      Ignore -> Ignore
-      Failure err -> Failure err
-      Success (a', s') -> runParser (f a') s'
+  (>>=) (Parser a) f = Parser $ a >=> (\(a', s') -> runParser (f a') s')
 
 {- Default parsers -}
 
