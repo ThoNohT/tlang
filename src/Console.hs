@@ -61,7 +61,7 @@ format indent = List.intercalate "\n" . fmap indentLine . lines . formatBare
         else l
 
 -- | Print the specified text to stderr.
-ePutStrLn = hPutStrLn stderr . color 31
+ePutStrLn = hPutStrLn stderr
 
 -- | Gets the set of flags from an Either that contains the flags or the list of invalid flags.
 --   If there are invalid flags, an error message is printed to stderr and the program exits.

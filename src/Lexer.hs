@@ -10,6 +10,9 @@ module Lexer
     tryGetSymbol,
     tryGetNumber,
     tryGetStringLiteral,
+    tokenToFileText,
+    rangeToFileText,
+    posToFileText,
     isEol,
     isSeparator,
   )
@@ -64,6 +67,10 @@ nextLine Position {col, line} = Position {col = 0, line = line + 1}
 
 -- | A range of positions in a source file.
 data Range = Range {file :: FilePath, startPos :: Position, endPos :: Position}
+
+-- | Converts a range to a string representing the range's position including the filename.
+rangeToFileText :: Range -> Text
+rangeToFileText Range {file, startPos} = posToFileText file startPos
 
 instance Formattable Range where
   formatBare Range {file, startPos, endPos} =
@@ -152,6 +159,10 @@ data Token = Token
 instance Formattable Token where
   formatBare Token {tokenRange, tData, whitespaceBefore} =
     printf "%s %s, whitespaceBefore: %s" (formatBare tokenRange) (formatBare tData) (color 35 $ show whitespaceBefore)
+
+-- | Converts a token to a string representing the token's position including the filename.
+tokenToFileText :: Token -> Text
+tokenToFileText Token {tokenRange} = rangeToFileText tokenRange
 
 data LexerState = LexerState
   { filename :: FilePath,

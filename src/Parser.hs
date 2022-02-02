@@ -15,6 +15,8 @@ import Lexer
     isEol,
     isSeparator,
     rangeFromRanges,
+    rangeToFileText,
+    tokenToFileText,
     tryGetIdentifier,
     tryGetNumber,
     tryGetStringLiteral,
@@ -110,9 +112,17 @@ gets f = f <$> get
 
 type Parser' = Parser ParserState
 
--- Alias for shorter for matting.
+-- | Alias for shorter for matting.
 fb :: Formattable a => a -> String
 fb = formatBare
+
+-- | Alias for tokenToFileText.
+tft :: Token -> Text
+tft = tokenToFileText
+
+-- | Alias for rangeToFileText.
+rft :: Range -> Text
+rft = rangeToFileText
 
 -- | Runs a parser on the specified list of tokens.
 run :: Parser' a -> [Token] -> Either String a
@@ -132,7 +142,7 @@ consumeExact toConsume label = do
   tkn <- pToken
   if tData tkn == toConsume
     then pure $ tData tkn
-    else pfail $ printf "%s Parsing %s failed, expected %s, but got %s." (fb $ tokenRange tkn) label (fb toConsume) (fb $ tData tkn)
+    else pfail $ printf "%s: Parsing %s failed, expected %s, but got %s." (tft tkn) label (fb toConsume) (fb $ tData tkn)
 
 -- | A parser that succeeds if the mapping on the consumed token returns Just, and fails otherwise.
 consumeJust :: (TokenData -> Maybe a) -> String -> Parser' a
@@ -144,7 +154,7 @@ consumeJust' f label = do
   tkn <- pToken
   case f $ tData tkn of
     Just a -> pure (a, tokenRange tkn)
-    Nothing -> pfail $ printf "%s Parsing %s failed, unexpected %s." (fb $ tokenRange tkn) label (fb $ tData tkn)
+    Nothing -> pfail $ printf "%s: Parsing %s failed, unexpected %s." (tft tkn) label (fb $ tData tkn)
 
 -- | A parser that succeeds if the check on the consumed token returns True, and fails otherwise.
 consumeIf :: (TokenData -> Bool) -> String -> Parser' ()
@@ -172,7 +182,7 @@ tryConsumeIf f = tryConsumeJust (\x -> if f x then Just () else Nothing)
 
 -- | A parser that parses exactly one end of line token and fails otherwise.
 eolParser :: String -> Parser' ()
-eolParser label = consumeIf isEol $ printf "%a end of line" label
+eolParser label = consumeIf isEol $ printf "%s end of line" label
 
 {- Parsers for domain types -}
 
@@ -293,8 +303,8 @@ printStmtParserM = do
     _ ->
       pfail $
         printf
-          "%s Error parsing a print statement, expected a string literal or expression, but got %s."
-          (fb $ tokenRange nextToken)
+          "%s: Error parsing a print statement, expected a string literal or expression, but got %s."
+          (tft nextToken)
           (fb nextToken)
 
 -- | A parser for anassignment statement. Returns Ignore if the let keyword cannot be parsed,
@@ -310,7 +320,7 @@ assignmentStmtParserM indent = do
   assmtRange <- gets (tokenRange . curTkn)
   end <- gets (tokenRange . prevTkn)
 
-  (assmt, eols) <- assignmentParserM indent <|> pfail (printf "%s: Error parsing an assignment." (fb assmtRange))
+  (assmt, eols) <- assignmentParserM indent <|> pfail (printf "%s: Error parsing an assignment." (rft assmtRange))
 
   pure
     ( UAssignment
@@ -327,7 +337,7 @@ returnStmtParserM :: Parser' (UncheckedStatement, Bool)
 returnStmtParserM = do
   start <- gets (tokenRange . curTkn)
   tryConsumeExact (KeywordToken "return")
-  expr <- expressionParserM <|> pfail (printf "%s Error parsing a return expression" (fb start))
+  expr <- expressionParserM <|> pfail (printf "%s: Error parsing a return expression" (rft start))
 
   end <- gets (tokenRange . prevTkn)
   pure (UReturn (rangeFromRanges start end) expr, True)
