@@ -20,7 +20,7 @@ module Console
   )
 where
 
-import CompilerFlag (CompilerFlag, BuildFlag, CleanFlag, showFlags, allFlags)
+import CompilerFlag (BuildFlag, CleanFlag, CompilerFlag, allFlags, showFlags)
 import Core (rightPad)
 import Data.List as List (intercalate)
 import Data.Map (Map)
@@ -36,28 +36,29 @@ import Text.Printf (printf)
 
 -- | Applies a color coding around the specified string.
 --   https://chrisyeh96.github.io/2020/03/28/terminal-colors.html
-color :: Int -> String -> String
-color nr elem = printf "%s%i%s%s%s" "\x1b[" nr "m" elem "\x1b[0m"
+color :: Bool -> Int -> String -> String
+color False _ elem = elem
+color True nr elem = printf "%s%i%s%s%s" "\x1b[" nr "m" elem "\x1b[0m"
 
 -- | Makes specified string bold.
-bold = color 1
+bold = flip color 1
 
 -- | Makes the specified string look less intense.
-faint = color 2
+faint = flip color 2
 
 -- | Formattable objects can be easily formatted, and their formatted strings can be used in the formatting of other
 --   objects, while easily keeping track of the indentation needed to format everything in a nested manner.
 class Formattable a where
   -- | Create a formatted string for an object without being concerned with indentation.
-  formatBare :: a -> String
+  formatBare :: Bool -> a -> String
 
 -- | Format an object using formatBare, and then applying the specified indentation.
-format :: Formattable a => Int -> a -> String
-format indent = List.intercalate "\n" . fmap indentLine . lines . formatBare
+format :: Formattable a => Bool -> Int -> a -> String
+format useColor indent = List.intercalate "\n" . fmap indentLine . lines . formatBare useColor
   where
     indentLine l =
       if indent > 0
-        then printf " %s%s" (faint $ color 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
+        then printf " %s%s" (faint useColor $ color useColor 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
         else l
 
 -- | Print the specified text to stderr.

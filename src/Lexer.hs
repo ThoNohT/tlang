@@ -47,7 +47,7 @@ isWhitespace c = Char.isSpace c && c /= '\n'
 data Position = Position {line :: Int, col :: Int}
 
 instance Formattable Position where
-  formatBare Position {line, col} = printf "%i:%i" (line + 1) (col + 1)
+  formatBare _ Position {line, col} = printf "%i:%i" (line + 1) (col + 1)
 
 -- | Converts a position to a string including the specified filename.
 posToFileText :: FilePath -> Position -> Text
@@ -73,8 +73,8 @@ rangeToFileText :: Range -> Text
 rangeToFileText Range {file, startPos} = posToFileText file startPos
 
 instance Formattable Range where
-  formatBare Range {file, startPos, endPos} =
-    color 32 $ printf "[%s:%s->%s]" file (formatBare startPos) (formatBare endPos)
+  formatBare uc Range {file, startPos, endPos} =
+    color uc 32 $ printf "[%s:%s->%s]" file (formatBare uc startPos) (formatBare uc endPos)
 
 -- | Creates a range from two positions and a filename.
 rangeFromPositions filename startPos endPos =
@@ -105,7 +105,7 @@ ignoreToken (CommentToken _) = True
 ignoreToken _ = False
 
 instance Formattable TokenData where
-  formatBare td = uncurry (printf "%s%s") $ bimap bold (color 35) tuple
+  formatBare uc td = uncurry (printf "%s%s") $ bimap (bold uc) (color uc 35) tuple
     where
       tuple =
         case td of
@@ -157,8 +157,8 @@ data Token = Token
   }
 
 instance Formattable Token where
-  formatBare Token {tokenRange, tData, whitespaceBefore} =
-    printf "%s %s, whitespaceBefore: %s" (formatBare tokenRange) (formatBare tData) (color 35 $ show whitespaceBefore)
+  formatBare uc Token {tokenRange, tData, whitespaceBefore} =
+    printf "%s %s, whitespaceBefore: %s" (formatBare uc tokenRange) (formatBare uc tData) (color uc 35 $ show whitespaceBefore)
 
 -- | Converts a token to a string representing the token's position including the filename.
 tokenToFileText :: Token -> Text

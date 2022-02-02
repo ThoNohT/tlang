@@ -114,7 +114,7 @@ type Parser' = Parser ParserState
 
 -- | Alias for shorter for matting.
 fb :: Formattable a => a -> String
-fb = formatBare
+fb = formatBare False
 
 -- | Alias for tokenToFileText.
 tft :: Token -> Text

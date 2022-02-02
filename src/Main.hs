@@ -27,7 +27,7 @@ compile fileName flags = do
 
   if CompilerFlag.isActive DumpLexerTokens flags
     then do
-      putStr $ unlines $ fmap Console.formatBare tokens
+      putStr $ unlines $ fmap (Console.formatBare True) tokens
       exitSuccess
     else pure ()
 
@@ -35,7 +35,7 @@ compile fileName flags = do
 
   if CompilerFlag.isActive DumpUncheckedSyntaxTree flags
     then do
-      putStrLn $ Console.formatBare uncheckedProject
+      putStrLn $ Console.formatBare True uncheckedProject
       exitSuccess
     else pure ()
 
