@@ -284,7 +284,7 @@ expressionParserM = binaryParserM <|> intLiteralParserM <|> variableParserM
       exprMaybe <- optional expressionParserM
 
       end <- gets (tokenRange . prevTkn)
-      pure $ UVariable (rangeFromRanges start end) (UncheckedVariable varRange var) exprMaybe
+      pure $ UVarExpr (rangeFromRanges start end) (UncheckedVariable varRange var) exprMaybe
 
 -- | A parser for a print statement. Returns Ignore if the print keyword cannot be parsed,
 --   fails if anything later fails.
