@@ -19,7 +19,7 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/ThoNohT/tlang#readme>
 
 dependencies:
-- base >= 4.7 && < 5
+- base >= 4.16 && < 5
 
 executables:
   tlang:

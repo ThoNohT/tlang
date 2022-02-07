@@ -185,7 +185,7 @@ data LexerState = LexerState
     curChar :: Char,
     startOfLine :: Bool,
     spacesPerIndent :: Maybe Natural,
-    whitespaceBefore :: Text,
+    whitespaceBeforeTkn :: Text,
     atEndOfInput :: Bool
   }
 
@@ -204,7 +204,7 @@ createLexerState input filename =
       curChar = firstChar,
       startOfLine = True,
       spacesPerIndent = Nothing,
-      whitespaceBefore = "",
+      whitespaceBeforeTkn = "",
       atEndOfInput
     }
   where
@@ -239,19 +239,19 @@ setTokenStartPoint state = state {tokenStartPos = pos state, accumulator = ""}
 
 -- | Sets the whitespaceBefore field to the specified value.
 setWhitespaceBefore :: Text -> LexerState -> LexerState
-setWhitespaceBefore value state = state {whitespaceBefore = value}
+setWhitespaceBefore value state = state {whitespaceBeforeTkn = value}
 
 -- | Adds a token to the output list.
 --   Uses the state's backup position as the start of the token, and the previous position as the end.
 --   whitespaceBefore is reset to the empty string.
 addToken :: TokenData -> LexerState -> LexerState
-addToken tData state@LexerState {tokens, whitespaceBefore, filename, tokenStartPos, prevPos} =
-  state {tokens = newToken : tokens, whitespaceBefore = ""}
+addToken tData state@LexerState {tokens, whitespaceBeforeTkn, filename, tokenStartPos, prevPos} =
+  state {tokens = newToken : tokens, whitespaceBeforeTkn = ""}
   where
     newToken =
       Token
         { range = rangeFromPositions filename tokenStartPos prevPos,
-          whitespaceBefore = whitespaceBefore,
+          whitespaceBefore = whitespaceBeforeTkn,
           tData = tData
         }
 
