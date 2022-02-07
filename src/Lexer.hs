@@ -1,7 +1,7 @@
 module Lexer
   ( Position (..),
     Range (..),
-    Ranged (getRange),
+    getRange,
     Token (..),
     TokenData (..),
     rangeFromRanges,
@@ -37,6 +37,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set (member)
 import Data.Text (Text)
 import qualified Data.Text as T
+import GHC.Records (HasField (getField))
 import Numeric.Natural (Natural)
 import Text.Printf (printf)
 import Text.Read (readMaybe)
@@ -86,8 +87,9 @@ rangeFromRanges :: Range -> Range -> Range
 rangeFromRanges startRange endRange =
   Range {file = file startRange, startPos = startPos startRange, endPos = endPos endRange}
 
--- A class for obtaining the range from any element that has one.
-class Ranged a where getRange :: a -> Range
+-- Gets the range from any type that has a range field of type Range.
+getRange :: HasField "range" r Range => r -> Range
+getRange = getField @"range"
 
 -- | Encodes all the different types of tokens, with their data.
 data TokenData
@@ -159,8 +161,6 @@ data Token = Token
     tData :: TokenData,
     whitespaceBefore :: Text
   }
-
-instance Ranged Token where getRange Token {range} = range
 
 instance Formattable Token where
   formatBare uc Token {range, tData, whitespaceBefore} =

@@ -45,6 +45,8 @@ executables:
     - GeneralizedNewtypeDeriving
     - DerivingVia
     - OverloadedStrings
+    - DataKinds
+    - TypeApplications
     dependencies:
     - containers
     - process

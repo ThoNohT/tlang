@@ -9,7 +9,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Lexer
   ( Range,
-    Ranged (getRange),
+    getRange,
     Token (..),
     TokenData (..),
     ignoreToken,
