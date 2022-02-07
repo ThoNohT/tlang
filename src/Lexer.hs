@@ -1,6 +1,7 @@
 module Lexer
   ( Position (..),
     Range (..),
+    Ranged (getRange),
     Token (..),
     TokenData (..),
     rangeFromRanges,
@@ -85,6 +86,9 @@ rangeFromRanges :: Range -> Range -> Range
 rangeFromRanges startRange endRange =
   Range {file = file startRange, startPos = startPos startRange, endPos = endPos endRange}
 
+-- A class for obtaining the range from any element that has one.
+class Ranged a where getRange :: a -> Range
+
 -- | Encodes all the different types of tokens, with their data.
 data TokenData
   = IndentationToken Natural
@@ -151,18 +155,20 @@ isSeparator (SeparatorToken _) = True
 isSeparator _ = False
 
 data Token = Token
-  { tokenRange :: Range,
+  { range :: Range,
     tData :: TokenData,
     whitespaceBefore :: Text
   }
 
+instance Ranged Token where getRange Token {range} = range
+
 instance Formattable Token where
-  formatBare uc Token {tokenRange, tData, whitespaceBefore} =
-    printf "%s %s, whitespaceBefore: %s" (formatBare uc tokenRange) (formatBare uc tData) (color uc 35 $ show whitespaceBefore)
+  formatBare uc Token {range, tData, whitespaceBefore} =
+    printf "%s %s, whitespaceBefore: %s" (formatBare uc range) (formatBare uc tData) (color uc 35 $ show whitespaceBefore)
 
 -- | Converts a token to a string representing the token's position including the filename.
 tokenToFileText :: Token -> Text
-tokenToFileText Token {tokenRange} = rangeToFileText tokenRange
+tokenToFileText Token {range} = rangeToFileText range
 
 data LexerState = LexerState
   { filename :: FilePath,
@@ -244,7 +250,7 @@ addToken tData state@LexerState {tokens, whitespaceBefore, filename, tokenStartP
   where
     newToken =
       Token
-        { tokenRange = rangeFromPositions filename tokenStartPos prevPos,
+        { range = rangeFromPositions filename tokenStartPos prevPos,
           whitespaceBefore = whitespaceBefore,
           tData = tData
         }

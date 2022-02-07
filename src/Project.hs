@@ -6,12 +6,14 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as T
-import Lexer (Range)
+import Lexer (Range, Ranged (getRange))
 import Text.Printf (printf)
 
 {- Project -}
 
 data StringLiteral = StringLiteral {range :: Range, index :: Int, string :: Text}
+
+instance Ranged StringLiteral where getRange StringLiteral {range} = range
 
 instance Formattable StringLiteral where
   formatBare uc (StringLiteral range index string) =
@@ -23,6 +25,8 @@ instance Formattable StringLiteral where
       (color uc 35 $ T.unpack string)
 
 data Variable = Variable {range :: Range, index :: Int, offset :: Int, name :: Text, context :: [Text]}
+
+instance Ranged Variable where getRange Variable {range} = range
 
 instance Formattable Variable where
   formatBare uc (Variable range index offset name context) =
@@ -38,6 +42,10 @@ instance Formattable Variable where
 
 data Operator = Add {range :: Range} | Sub {range :: Range}
 
+instance Ranged Operator where
+  getRange Add {range} = range
+  getRange Sub {range} = range
+
 instance Formattable Operator where
   formatBare uc (Add range) = printf "%s %s" (formatBare uc range) (bold uc "Add")
   formatBare uc (Sub range) = printf "%s %s" (formatBare uc range) (bold uc "Sub")
@@ -46,6 +54,11 @@ data Expression
   = IntLiteral {range :: Range, value :: Int}
   | VarExpr {range :: Range, var :: Variable, param :: Maybe Expression}
   | Binary {range :: Range, op :: Operator, left :: Expression, right :: Expression}
+
+instance Ranged Expression where
+  getRange IntLiteral {range} = range
+  getRange VarExpr {range} = range
+  getRange Binary {range} = range
 
 instance Formattable Expression where
   formatBare uc (IntLiteral range int) = printf "%s %s %s" (formatBare uc range) (bold uc "IntLiteral") (color uc 35 $ show int)
@@ -59,6 +72,10 @@ data Assignment
   = ExprAssignment {range :: Range, expr :: Expression}
   | BlockAssignment {range :: Range, stmts :: [Statement]}
 
+instance Ranged Assignment where
+  getRange ExprAssignment {range} = range
+  getRange BlockAssignment {range} = range
+
 instance Formattable Assignment where
   formatBare uc (ExprAssignment range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "ExprAssignment") (format uc 1 expr)
   formatBare uc (BlockAssignment range stmts) =
@@ -69,6 +86,12 @@ data Statement
   | PrintExpr {range :: Range, expr :: Expression}
   | Assignment {range :: Range, var :: Variable, arg :: Maybe Variable, assmt :: Assignment}
   | Return {range :: Range, expr :: Expression}
+
+instance Ranged Statement where
+  getRange PrintStr {range} = range
+  getRange PrintExpr {range} = range
+  getRange Assignment {range} = range
+  getRange Return {range} = range
 
 instance Formattable Statement where
   formatBare uc (PrintStr range string) = printf "%s %s\n%s" (formatBare uc range) (bold uc "PrintStr") (format uc 1 string)
@@ -87,6 +110,8 @@ data Program = Program
     variablesCount :: Int
   }
 
+instance Ranged Program where getRange Program {range} = range
+
 instance Formattable Program where
   formatBare uc (Program range stmts strings vs vc) =
     printf
@@ -99,6 +124,8 @@ instance Formattable Program where
       (color uc 35 $ show vc)
 
 data ProjectType = Executable {range :: Range, name :: Text}
+
+instance Ranged ProjectType where getRange Executable {range} = range
 
 instance Formattable ProjectType where
   formatBare uc (Executable range name) = printf "%s %s %s" (formatBare uc range) (bold uc "Executable") (color uc 35 (T.unpack name))
@@ -113,11 +140,15 @@ instance Formattable Project where
 
 data UncheckedStringLiteral = UncheckedStringLiteral {range :: Range, string :: Text}
 
+instance Ranged UncheckedStringLiteral where getRange UncheckedStringLiteral {range} = range
+
 instance Formattable UncheckedStringLiteral where
   formatBare uc (UncheckedStringLiteral range string) =
     printf "%s %s \"%s\"" (formatBare uc range) (bold uc "UncheckedStringLiteral") (color uc 35 $ T.unpack string)
 
 data UncheckedVariable = UncheckedVariable {range :: Range, name :: Text}
+
+instance Ranged UncheckedVariable where getRange UncheckedVariable {range} = range
 
 instance Formattable UncheckedVariable where
   formatBare uc (UncheckedVariable range name) =
@@ -128,11 +159,10 @@ data UncheckedExpression
   | UVarExpr {range :: Range, var :: UncheckedVariable, param :: Maybe UncheckedExpression}
   | UBinary {range :: Range, op :: Operator, left :: UncheckedExpression, right :: UncheckedExpression}
 
--- | Extracts the range from an expression.
-expressionRange :: UncheckedExpression -> Range
-expressionRange UIntLiteral {range} = range
-expressionRange UVarExpr {range} = range
-expressionRange UBinary {range} = range
+instance Ranged UncheckedExpression where
+  getRange UIntLiteral {range} = range
+  getRange UVarExpr {range} = range
+  getRange UBinary {range} = range
 
 instance Formattable UncheckedExpression where
   formatBare uc (UIntLiteral range int) = printf "%s %s %s" (formatBare uc range) (bold uc "UIntLiteral") (color uc 35 $ show int)
@@ -146,6 +176,10 @@ data UncheckedAssignment
   = UExprAssignment {range :: Range, expr :: UncheckedExpression}
   | UBlockAssignment {range :: Range, stmts :: [UncheckedStatement]}
 
+instance Ranged UncheckedAssignment where
+  getRange UExprAssignment {range} = range
+  getRange UBlockAssignment {range} = range
+
 instance Formattable UncheckedAssignment where
   formatBare uc (UExprAssignment range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UExprAssignment") (format uc 1 expr)
   formatBare uc (UBlockAssignment range stmts) =
@@ -157,6 +191,12 @@ data UncheckedStatement
   | UAssignment {range :: Range, var :: UncheckedVariable, arg :: Maybe UncheckedVariable, assmt :: UncheckedAssignment}
   | UReturn {range :: Range, expr :: UncheckedExpression}
 
+instance Ranged UncheckedStatement where
+  getRange UPrintStr {range} = range
+  getRange UPrintExpr {range} = range
+  getRange UAssignment {range} = range
+  getRange UReturn {range} = range
+
 instance Formattable UncheckedStatement where
   formatBare uc (UPrintStr range string) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UPrintStr") (format uc 1 string)
   formatBare uc (UPrintExpr range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UPrintExpr") (format uc 1 expr)
@@ -167,6 +207,8 @@ instance Formattable UncheckedStatement where
   formatBare uc (UReturn range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UReturn") (format uc 1 expr)
 
 data UncheckedProgram = UncheckedProgram {range :: Range, stmts :: [UncheckedStatement]}
+
+instance Ranged UncheckedProgram where getRange UncheckedProgram {range} = range
 
 instance Formattable UncheckedProgram where
   formatBare uc (UncheckedProgram range stmts) =

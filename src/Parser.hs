@@ -9,6 +9,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Lexer
   ( Range,
+    Ranged (getRange),
     Token (..),
     TokenData (..),
     ignoreToken,
@@ -155,7 +156,7 @@ consumeJust' f label = do
   uc <- gets uc
   tkn <- pToken
   case f $ tData tkn of
-    Just a -> pure (a, tokenRange tkn)
+    Just a -> pure (a, getRange tkn)
     Nothing -> pfail $ printf "%s: Parsing %s failed, unexpected %s." (tft tkn) label (fb uc $ tData tkn)
 
 -- | A parser that succeeds if the check on the consumed token returns True, and fails otherwise.
@@ -176,7 +177,7 @@ tryConsumeJust' f = do
   tkn <- pToken
   case f $ tData tkn of
     Nothing -> empty
-    Just a -> pure (a, tokenRange tkn)
+    Just a -> pure (a, getRange tkn)
 
 -- | A parser that succeeds if the check on the consumed token returns True, and returns Ignore otherwise.
 tryConsumeIf :: (TokenData -> Bool) -> Parser' ()
@@ -206,12 +207,12 @@ eolsParser label = do
 -- | A parser for a project type.
 projectTypeParser :: Parser' ProjectType
 projectTypeParser = do
-  start <- gets (tokenRange . curTkn)
+  start <- gets (getRange . curTkn)
   consumeExact (KeywordToken "Executable") "project type"
   consumeExact (SymbolToken ":") "project type"
   name <- consumeJust tryGetIdentifier "project name"
 
-  end <- gets (tokenRange . prevTkn)
+  end <- gets (getRange . prevTkn)
   eolsParser "project type"
   pure $ Executable (rangeFromRanges start end) name
 
@@ -235,11 +236,11 @@ assignmentParserM indent = do
   if isEol $ tData startTkn
     then do
       eolParser "block assignment"
-      start <- gets (tokenRange . curTkn)
+      start <- gets (getRange . curTkn)
       stmts <- many $ statementParserM (indent + 1)
-      end <- gets (tokenRange . prevTkn)
+      end <- gets (getRange . prevTkn)
       pure (UBlockAssignment (rangeFromRanges start end) stmts, False)
-    else (\e -> (UExprAssignment (expressionRange e) e, True)) <$> expressionParserM
+    else (\e -> (UExprAssignment (getRange e) e, True)) <$> expressionParserM
 
 -- | A parser for an operator, returns Ignore if an operator could not be parsed.
 operatorParserM :: Parser' Operator
@@ -250,12 +251,12 @@ operatorParserM = tryOp "+" Add <|> tryOp "-" Sub
 -- | A parser for a number, returns Ignore if a number cannot be fully parsed.
 numberParserM :: Parser' (Int, Range)
 numberParserM = do
-  start <- gets (tokenRange . curTkn)
+  start <- gets (getRange . curTkn)
   isNegative <- optional (tryConsumeExact (SymbolToken "-"))
   let sign = maybe 1 (const (-1)) isNegative
   num <- tryConsumeJust tryGetNumber
 
-  end <- gets (tokenRange . prevTkn)
+  end <- gets (getRange . prevTkn)
   pure (sign * num, rangeFromRanges start end)
 
 -- | A parser for an expression. Returns Ignore if any of the sub expression parsers returns ignore,
@@ -265,13 +266,13 @@ expressionParserM = binaryParserM <|> intLiteralParserM <|> variableParserM
   where
     binaryParserM :: Parser' UncheckedExpression
     binaryParserM = do
-      start <- gets (tokenRange . curTkn)
+      start <- gets (getRange . curTkn)
       -- Left side of a binary expression cannot be a recursive expression, to prevent infinite loops.
       left <- intLiteralParserM <|> variableParserM
       op <- operatorParserM
       right <- expressionParserM
 
-      end <- gets (tokenRange . prevTkn)
+      end <- gets (getRange . prevTkn)
       pure $ UBinary (rangeFromRanges start end) op left right
 
     intLiteralParserM :: Parser' UncheckedExpression
@@ -279,18 +280,18 @@ expressionParserM = binaryParserM <|> intLiteralParserM <|> variableParserM
 
     variableParserM :: Parser' UncheckedExpression
     variableParserM = do
-      start <- gets (tokenRange . curTkn)
+      start <- gets (getRange . curTkn)
       (var, varRange) <- tryConsumeJust' tryGetIdentifier
       exprMaybe <- optional expressionParserM
 
-      end <- gets (tokenRange . prevTkn)
+      end <- gets (getRange . prevTkn)
       pure $ UVarExpr (rangeFromRanges start end) (UncheckedVariable varRange var) exprMaybe
 
 -- | A parser for a print statement. Returns Ignore if the print keyword cannot be parsed,
 --   fails if anything later fails.
 printStmtParserM :: Parser' (UncheckedStatement, Bool)
 printStmtParserM = do
-  start <- gets (tokenRange . curTkn)
+  start <- gets (getRange . curTkn)
   tryConsumeExact (KeywordToken "print")
 
   nextToken <- gets curTkn
@@ -298,7 +299,7 @@ printStmtParserM = do
   exprMaybe <- optional expressionParserM
 
   uc <- gets uc
-  end <- gets (tokenRange . prevTkn)
+  end <- gets (getRange . prevTkn)
   let range = rangeFromRanges start end
   case (strLitAndRangeMaybe, exprMaybe) of
     (Just (sl, r), _) -> pure (UPrintStr range (UncheckedStringLiteral r sl), True)
@@ -314,14 +315,14 @@ printStmtParserM = do
 --   fails if anything later fails.
 assignmentStmtParserM :: Natural -> Parser' (UncheckedStatement, Bool)
 assignmentStmtParserM indent = do
-  start <- gets (tokenRange . curTkn)
+  start <- gets (getRange . curTkn)
   tryConsumeExact (KeywordToken "let")
   (name, nameRange) <- consumeJust' tryGetIdentifier "assignment variable"
   paramAndRangeMaybe <- optional $ tryConsumeJust' tryGetIdentifier
 
   consumeExact (SymbolToken "=") "assignment"
-  assmtRange <- gets (tokenRange . curTkn)
-  end <- gets (tokenRange . prevTkn)
+  assmtRange <- gets (getRange . curTkn)
+  end <- gets (getRange . prevTkn)
 
   (assmt, eols) <- assignmentParserM indent <|> pfail (printf "%s: Error parsing an assignment." (rft assmtRange))
 
@@ -338,11 +339,11 @@ assignmentStmtParserM indent = do
 --   fails if anything later fails.
 returnStmtParserM :: Parser' (UncheckedStatement, Bool)
 returnStmtParserM = do
-  start <- gets (tokenRange . curTkn)
+  start <- gets (getRange . curTkn)
   tryConsumeExact (KeywordToken "return")
   expr <- expressionParserM <|> pfail (printf "%s: Error parsing a return expression" (rft start))
 
-  end <- gets (tokenRange . prevTkn)
+  end <- gets (getRange . prevTkn)
   pure (UReturn (rangeFromRanges start end) expr, True)
 
 -- | A parser for a statement. Returns Ignore if any of the sub parsers returns ignore.
@@ -357,9 +358,9 @@ statementParserM indent = do
 -- | A parser for a program.
 programParser :: Parser' UncheckedProgram
 programParser = do
-  start <- gets (tokenRange . curTkn)
+  start <- gets (getRange . curTkn)
   stmts <- many (statementParserM 0)
-  end <- gets (tokenRange . prevTkn)
+  end <- gets (getRange . prevTkn)
   pure $ UncheckedProgram (rangeFromRanges start end) stmts
 
 -- | A parser for a project.
