@@ -47,6 +47,7 @@ executables:
     - OverloadedStrings
     - DataKinds
     - TypeApplications
+    - ImportQualifiedPost
     dependencies:
     - containers
     - process

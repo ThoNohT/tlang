@@ -87,6 +87,9 @@ rangeFromRanges :: Range -> Range -> Range
 rangeFromRanges startRange endRange =
   Range {file = file startRange, startPos = startPos startRange, endPos = endPos endRange}
 
+-- | getRange for all types that don't have a range field.
+class WithRange a where getRange' :: a -> Range
+
 -- Gets the range from any type that has a range field of type Range.
 getRange :: HasField "range" r Range => r -> Range
 getRange = getField @"range"

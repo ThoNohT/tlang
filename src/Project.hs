@@ -1,17 +1,23 @@
 module Project where
 
 import Console (Formattable (formatBare), bold, color, format)
-import qualified Data.List as List
+import Data.List qualified as List
 import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map qualified as Map
 import Data.Text (Text)
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Lexer (Range, getRange)
 import Text.Printf (printf)
 
 {- Project -}
 
-data StringLiteral = StringLiteral {range :: Range, index :: Int, string :: Text}
+{- An index in a list. -}
+newtype Index = Index Int deriving Show
+
+{- An offset in memory. -}
+newtype Offset = Offset Int deriving Show
+
+data StringLiteral = StringLiteral {range :: Range, index :: Index, string :: Text}
 
 instance Formattable StringLiteral where
   formatBare uc (StringLiteral range index string) =
@@ -22,7 +28,7 @@ instance Formattable StringLiteral where
       (color uc 35 $ show index)
       (color uc 35 $ T.unpack string)
 
-data Variable = Variable {range :: Range, index :: Int, offset :: Int, name :: Text, context :: [Text]}
+data Variable = Variable {range :: Range, index :: Index, offset :: Offset, name :: Text, context :: [Text]}
 
 instance Formattable Variable where
   formatBare uc (Variable range index offset name context) =
@@ -82,9 +88,9 @@ instance Formattable Statement where
 data Program = Program
   { range :: Range,
     stmts :: [Statement],
-    strings :: Map String Int,
-    variablesSize :: Int,
-    variablesCount :: Int
+    strings :: Map String Index,
+    variablesSize :: Offset,
+    variablesCount :: Index
   }
 
 instance Formattable Program where
