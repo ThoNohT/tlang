@@ -30,24 +30,33 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     default-extensions:
+    - DataKinds
+    - DeriveFunctor
+    - DerivingVia
     - DisambiguateRecordFields
     - DuplicateRecordFields
-    - ScopedTypeVariables
+    - FlexibleContexts
+    - FlexibleInstances
+    - FunctionalDependencies
+    - GADTs
+    - GeneralizedNewtypeDeriving
+    - ImportQualifiedPost
     - LambdaCase
+    - MonoLocalBinds
+    - MultiParamTypeClasses
     - MultiWayIf
     - NamedFieldPuns
-    - TupleSections
-    - FlexibleContexts
-    - UndecidableInstances
-    - StandaloneDeriving
-    - DeriveFunctor
-    - MonoLocalBinds
-    - GeneralizedNewtypeDeriving
-    - DerivingVia
+    - NamedWildCards
     - OverloadedStrings
-    - DataKinds
+    - PartialTypeSignatures
+    - RankNTypes
+    - RecordWildCards
+    - ScopedTypeVariables
+    - StandaloneDeriving
+    - TupleSections
     - TypeApplications
-    - ImportQualifiedPost
+    - TypeFamilies
+    - UndecidableInstances
     dependencies:
     - containers
     - process
