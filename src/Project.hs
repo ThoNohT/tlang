@@ -166,6 +166,10 @@ instance Formattable UncheckedStatement where
     printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "UAssignment") (format uc 1 var) (format uc 1 arg) (format uc 1 assmt)
   formatBare uc (UReturn range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UReturn") (format uc 1 expr)
 
+isReturn :: UncheckedStatement -> Bool
+isReturn (UReturn _ _) = True
+isReturn _ = False
+
 data UncheckedProgram = UncheckedProgram {range :: Range, stmts :: [UncheckedStatement]}
 
 instance Formattable UncheckedProgram where
