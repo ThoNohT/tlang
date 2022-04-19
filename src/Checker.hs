@@ -160,20 +160,19 @@ checkProgram (UncheckedProgram r stmts) = do
   let allIssues = concat [stmtIssues, lastStmtIssues, unreachableIssues]
   pure undefined
 
-  if not $ any ((==) Error . severity) stmtIssues
-    then do
-      ctx <- get
-      pure $
-        Checked
-          stmtIssues
-          ( Program
-              { range = r
-              , stmts = mapMaybe checkResultValue checkedStmts
-              , strings = stringIndexes ctx
-              , variablesCount = nextVariableIndex ctx
-              , variablesSize = nextVariableOffset ctx
-              }
-          )
+  if not $ any ((==) Error . severity) stmtIssues then do
+    ctx <- get
+    pure $
+      Checked
+        stmtIssues
+        ( Program
+            { range = r
+            , stmts = mapMaybe checkResultValue checkedStmts
+            , strings = stringIndexes ctx
+            , variablesCount = nextVariableIndex ctx
+            , variablesSize = nextVariableOffset ctx
+            }
+        )
     else pure $ Failed $ NE.fromList stmtIssues
 
 {- Checks a project for issues. -}
