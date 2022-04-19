@@ -39,6 +39,11 @@ checkResultIssues :: CheckResult a -> [CheckIssue]
 checkResultIssues (Checked issues _) = issues
 checkResultIssues (Failed issues) = NE.toList issues
 
+instance WithRange a => WithRange (CheckResult a) where
+  getRange (Checked _ a) = getRange a
+  -- TODO: not sure if the ranges are ordered, rangeFromRanges does assume this.
+  getRange (Failed issues) = foldl rangeFromRanges (getRange $ NE.head issues) (getRange <$> NE.tail issues)
+
 instance Functor CheckResult where
   fmap f (Checked issues r) = Checked issues $ f r
   fmap f (Failed issues) = Failed issues

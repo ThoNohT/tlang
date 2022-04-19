@@ -4,14 +4,14 @@ import Console (Formattable (formatBare))
 import Control.Applicative (Alternative (empty, many, (<|>)), optional)
 import Control.Monad ((>=>))
 import Data.Bifunctor (Bifunctor (first))
-import qualified Data.List as List (filter, uncons)
+import Data.List qualified as List (filter, uncons)
 import Data.Text (Text)
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Lexer
   ( Range,
-    getRange,
     Token (..),
     TokenData (..),
+    getRange,
     ignoreToken,
     isEol,
     isSeparator,
@@ -79,9 +79,7 @@ parseResultToEither (Success a) = Right a
 parseResultToEither (Failure err) = Left $ T.unpack err
 parseResultToEither Ignore = Left "Parser produced no result."
 
-newtype Parser s a = Parser {runParser :: s -> ParseResult (a, s)}
-
-deriving instance Functor (Parser s)
+newtype Parser s a = Parser {runParser :: s -> ParseResult (a, s)} deriving (Functor)
 
 instance Applicative (Parser s) where
   pure a = Parser $ pure . (a,)

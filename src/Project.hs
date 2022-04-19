@@ -1,21 +1,21 @@
 module Project where
 
 import Console (Formattable (formatBare), bold, color, format)
-import Data.List qualified as List
+import qualified Data.List as List
 import Data.Map (Map)
-import Data.Map qualified as Map
+import qualified Data.Map as Map
 import Data.Text (Text)
-import Data.Text qualified as T
+import qualified Data.Text as T
 import Lexer (Range, getRange)
 import Text.Printf (printf)
 
 {- Project -}
 
 {- An index in a list. -}
-newtype Index = Index Int deriving Show
+newtype Index = Index Int deriving (Show)
 
 {- An offset in memory. -}
-newtype Offset = Offset Int deriving Show
+newtype Offset = Offset Int deriving (Show)
 
 data StringLiteral = StringLiteral {range :: Range, index :: Index, string :: Text}
 
@@ -86,11 +86,11 @@ instance Formattable Statement where
   formatBare uc (Return range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "Return") (format uc 1 expr)
 
 data Program = Program
-  { range :: Range,
-    stmts :: [Statement],
-    strings :: Map String Index,
-    variablesSize :: Offset,
-    variablesCount :: Index
+  { range :: Range
+  , stmts :: [Statement]
+  , strings :: Map Text Index
+  , variablesSize :: Offset
+  , variablesCount :: Index
   }
 
 instance Formattable Program where
