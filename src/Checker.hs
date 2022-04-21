@@ -68,10 +68,6 @@ instance Monad CheckResult where
       Failed issues' -> Failed $ NE.prependList issues issues'
       Checked issues' a' -> Checked (issues <> issues') a'
 
-{- Represents the nested set of variables the current statement is being evaluated in. Used for displaying
-   friendly debug information. -}
-type Context = [Text]
-
 data CheckerContext = CheckerContext
   { -- The strings known throughout the program and their indexes.
     stringIndexes :: Map Text Index
@@ -81,8 +77,9 @@ data CheckerContext = CheckerContext
     nextVariableIndex :: Index
   , -- The offset for the next variable to be defined.
     nextVariableOffset :: Offset
-  , -- The current context.
-    context :: Context
+  , -- The current nesting context. Represents the nested set of variables the current statement is being evaluated in.
+    -- used for displaying friendly debug information.
+    nestingCtx :: [Text]
   }
 
 {- The monad in which the checker runs, contains state, and returns a CheckResult. -}
@@ -90,6 +87,14 @@ type CheckerM a = CheckerM' (CheckResult a)
 
 {- CheckerM, but not with a CheckResult. -}
 type CheckerM' a = State CheckerContext a
+
+{- Pushes a new variable on the nesting context. -}
+pushNestingCtx :: Text -> CheckerM' ()
+pushNestingCtx name = modify' (\s -> s { nestingCtx = name : (nestingCtx s) })
+
+{- Pops the last variable from the nesting contex. -}
+popNestingCtx :: CheckerM' ()
+popNestingCtx = modify' (\s -> s { nestingCtx = drop 1 (nestingCtx s) })
 
 {- Returns the string index for the specified string and updates the set of string literals. If the string was defined
    before, this index is returned to prevent allocating a new string. -}
@@ -103,47 +108,35 @@ getStringIndex str = do
       modify' (\s -> s {stringIndexes = Map.insert str idx stringIndexes'})
       pure idx
 
-defineVariable :: Range -> Context -> CheckerContext -> Text -> Bool -> Bool -> (CheckerContext, CheckResult Variable)
-defineVariable range context checkCtxt name takesParam isArg = undefined
+defineVariable :: Range -> Text -> Bool -> Bool -> CheckerM Variable
+defineVariable range name takesParam isArg = undefined
 
-checkExpr :: CheckerContext -> UncheckedExpression -> (CheckerContext, CheckResult Expression)
+checkExpr :: UncheckedExpression -> CheckerM Expression
 checkExpr = undefined
 
--- checkStatement ::
---   Context ->
---   (CheckerContext, [CheckResult Statement]) ->
---   UncheckedStatement ->
---   (CheckerContext, [CheckResult Statement])
--- checkStatement context (checkCtx, acc) = \case
---   UPrintStr r (UncheckedStringLiteral r2 str) ->
---     let (checkCtx', idx) = getStringIndex checkCtx str
---      in (checkCtx', pure (PrintStr r $ StringLiteral r2 idx str) : acc)
---   UPrintExpr r expr ->
---     let (checkCtx', expr') = checkExpr checkCtx expr
---      in (checkCtx, (PrintExpr r <$> expr') : acc)
---   UAssignment r (UncheckedVariable r2 varName) maybeParam expr ->
---     let innerCtx = varName : context
---         paramResultMaybe =
---           ( \(UncheckedVariable r3 pName) ->
---               defineVariable r3 innerCtx checkCtx pName False True
---           )
---             <$> maybeParam
---      in undefined
---   _ -> undefined
+checkAssignment :: UncheckedAssignment -> CheckerM Expression
+checkAssignment = undefined
 
 checkStatement :: UncheckedStatement -> CheckerM Statement
-checkStatement = undefined
+checkStatement (UPrintStr r1 (UncheckedStringLiteral r2 str)) = do
+  idx <- getStringIndex str
+  pure $ Checked [] $ PrintStr r1 (StringLiteral r2 idx str)
+checkStatement (UPrintExpr r1 expr) = fmap (PrintExpr r1) <$> checkExpr expr
+checkStatement (UAssignment r1 (UncheckedVariable r2 name) arg assmt) = do
+  pushNestingCtx name
+  -- Check the assignment before the variable so the variable is not yet known during assignment evaluation.
+  -- But do check thevariable even if the assignment fails, so it is known later.
+  assignment <- checkAssignment assmt
+  popNestingCtx
 
-{- Given a function that performs a calculation on an element in a monad, creates a function that can be used in
-   foldM that takes an accumulator list of result elements and a new source element and prepends the result of
-   processing the source element to the accumulator. -}
-inFold :: Monad m => (a -> m b) -> [b] -> a -> m [b]
-inFold f' acc elem = (: acc) <$> f' elem
+  undefined
+
+checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
 
 {- Checks a program for issues. -}
 checkProgram :: UncheckedProgram -> CheckerM Program
 checkProgram (UncheckedProgram r stmts) = do
-  checkedStmts <- reverse <$> foldM (inFold checkStatement) [] stmts
+  checkedStmts <- reverse <$> mapM checkStatement stmts
   let stmtIssues = concatMap checkResultIssues checkedStmts
 
   -- The last statement must be a return statement.
@@ -160,20 +153,21 @@ checkProgram (UncheckedProgram r stmts) = do
   let allIssues = concat [stmtIssues, lastStmtIssues, unreachableIssues]
   pure undefined
 
-  if not $ any ((==) Error . severity) stmtIssues then do
-    ctx <- get
-    pure $
-      Checked
-        stmtIssues
-        ( Program
-            { range = r
-            , stmts = mapMaybe checkResultValue checkedStmts
-            , strings = stringIndexes ctx
-            , variablesCount = nextVariableIndex ctx
-            , variablesSize = nextVariableOffset ctx
-            }
-        )
-    else pure $ Failed $ NE.fromList stmtIssues
+  if not $ any ((==) Error . severity) allIssues
+    then do
+      ctx <- get
+      pure $
+        Checked
+          allIssues
+          ( Program
+              { range = r
+              , stmts = mapMaybe checkResultValue checkedStmts
+              , strings = stringIndexes ctx
+              , variablesCount = nextVariableIndex ctx
+              , variablesSize = nextVariableOffset ctx
+              }
+          )
+    else pure $ Failed $ NE.fromList allIssues
 
 {- Checks a project for issues. -}
 checkProject :: UncheckedProject -> CheckResult Project
@@ -186,5 +180,5 @@ checkProject (UncheckedProject projectType program) =
       , variableOffsets = Map.empty
       , nextVariableIndex = Index 0
       , nextVariableOffset = Offset 0
-      , context = []
+      , nestingCtx = []
       }

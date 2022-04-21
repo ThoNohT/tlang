@@ -29,11 +29,10 @@ whileS_ a = whileM_ (a <$> ST.get)
 whileSE_ a = whileM_ (lift $ a <$> ST.get)
 
 -- | Attempts to get the head of a list. Returns Nothing otherwise.
-tryHead = \case
-  [] -> Nothing
-  x : _ -> Just x
+tryHead [] = Nothing
+tryHead (x : _) = Just x
 
-tryLast = \case
-  [] -> Nothing
-  [a] -> Just a
-  _ : as -> tryLast as
+-- | Attempts to get the last element of a list. Returns Nothing otherwise.
+tryLast [] = Nothing
+tryLast [a] = Just a
+tryLast (_ : as) = tryLast as
