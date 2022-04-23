@@ -7,6 +7,7 @@ import Core (tryHead, tryLast)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (foldl)
 import Data.Function ((&))
+import Data.Functor ((<&>))
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE (fromList, head, prependList, tail, toList)
 import Data.Map (Map, (!?))
@@ -90,11 +91,11 @@ type CheckerM' a = State CheckerContext a
 
 {- Pushes a new variable on the nesting context. -}
 pushNestingCtx :: Text -> CheckerM' ()
-pushNestingCtx name = modify' (\s -> s { nestingCtx = name : (nestingCtx s) })
+pushNestingCtx name = modify' (\s -> s {nestingCtx = name : (nestingCtx s)})
 
 {- Pops the last variable from the nesting contex. -}
 popNestingCtx :: CheckerM' ()
-popNestingCtx = modify' (\s -> s { nestingCtx = drop 1 (nestingCtx s) })
+popNestingCtx = modify' (\s -> s {nestingCtx = drop 1 (nestingCtx s)})
 
 {- Returns the string index for the specified string and updates the set of string literals. If the string was defined
    before, this index is returned to prevent allocating a new string. -}
@@ -108,39 +109,34 @@ getStringIndex str = do
       modify' (\s -> s {stringIndexes = Map.insert str idx stringIndexes'})
       pure idx
 
-defineVariable :: Range -> Text -> Bool -> Bool -> CheckerM Variable
-defineVariable range name takesParam isArg = undefined
+defineVariable :: Range -> Text -> CheckerM Variable
+defineVariable range name = undefined
+
+getVariable :: Range -> Text -> CheckerM Variable
+getVariable range name = undefined
 
 checkExpr :: UncheckedExpression -> CheckerM Expression
-checkExpr = undefined
+checkExpr (UIntLiteral r intVal) = pure $ Checked [] (IntLiteral r intVal)
+checkExpr (UVarExpr r1 (UncheckedVariable r2 name)) = fmap (VarExpr r1) <$> getVariable r2 name
+checkExpr (UBinary r op exL exR) = do
+  cExL <- checkExpr exL
+  cExR <- checkExpr exR
+  pure $ cExL >>= \le -> cExR <&> \re -> Binary r op le re
 
-checkAssignment :: UncheckedAssignment -> CheckerM Expression
-checkAssignment = undefined
-
-checkStatement :: UncheckedStatement -> CheckerM Statement
-checkStatement (UPrintStr r1 (UncheckedStringLiteral r2 str)) = do
-  idx <- getStringIndex str
-  pure $ Checked [] $ PrintStr r1 (StringLiteral r2 idx str)
-checkStatement (UPrintExpr r1 expr) = fmap (PrintExpr r1) <$> checkExpr expr
-checkStatement (UAssignment r1 (UncheckedVariable r2 name) arg assmt) = do
-  pushNestingCtx name
-  -- Check the assignment before the variable so the variable is not yet known during assignment evaluation.
-  -- But do check thevariable even if the assignment fails, so it is known later.
-  assignment <- checkAssignment assmt
-  popNestingCtx
-
-  undefined
-
-checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
-
-{- Checks a program for issues. -}
-checkProgram :: UncheckedProgram -> CheckerM Program
-checkProgram (UncheckedProgram r stmts) = do
-  checkedStmts <- reverse <$> mapM checkStatement stmts
+checkAssignment :: UncheckedAssignment -> CheckerM Assignment
+checkAssignment (UExprAssignment r expr) = fmap (ExprAssignment r) <$> checkExpr expr
+checkAssignment (UBlockAssignment r stmts) = do
+  -- Store variables state such that after this block is done, we can revert assignments of all local variables.
+  variablesTop <- gets variableOffsets
+  checkedStmts <- mapM checkStatement stmts
   let stmtIssues = concatMap checkResultIssues checkedStmts
 
-  -- The last statement must be a return statement.
+  -- Revert variables, but not next variable index, such that all still get a unique index.
+  modify' (\s -> s {variableOffsets = variablesTop})
+
+  -- TODO: When types are introduced, all returns need to be of the same type.
   let lastStmtIssues = case tryLast stmts of
+        -- The last statement must be a return statement.
         Nothing -> [CheckIssue {range = r, severity = Error, msg = "A program needs at least one statement."}]
         Just (UReturn _ _) -> []
         Just _ -> [CheckIssue {range = r, severity = Error, msg = "The last statement of a program needs to be a return."}]
@@ -151,21 +147,61 @@ checkProgram (UncheckedProgram r stmts) = do
         Just stmt -> [CheckIssue {range = getRange stmt, severity = Warning, msg = "Statement is unreachable"}]
 
   let allIssues = concat [stmtIssues, lastStmtIssues, unreachableIssues]
-  pure undefined
 
-  if not $ any ((==) Error . severity) allIssues then do
-    ctx <- get
-    pure $
-      Checked
-        allIssues
-        ( Program
-            { range = r
-            , stmts = mapMaybe checkResultValue checkedStmts
-            , strings = stringIndexes ctx
-            , variablesCount = nextVariableIndex ctx
-            , variablesSize = nextVariableOffset ctx
-            }
-        )
+  if not $ any ((==) Error . severity) allIssues
+    then pure $ Checked allIssues (BlockAssignment r (mapMaybe checkResultValue checkedStmts))
+    else pure $ Failed $ NE.fromList allIssues
+
+checkStatement :: UncheckedStatement -> CheckerM Statement
+checkStatement (UPrintStr r1 (UncheckedStringLiteral r2 str)) = do
+  idx <- getStringIndex str
+  pure $ Checked [] $ PrintStr r1 (StringLiteral r2 idx str)
+checkStatement (UPrintExpr r1 expr) = fmap (PrintExpr r1) <$> checkExpr expr
+checkStatement (UAssignment r1 (UncheckedVariable r2 name) assmt) = do
+  -- Check the assignment before the variable so the variable is not yet known during assignment evaluation.
+  -- But do check thevariable even if the assignment fails, so it is known later.
+  pushNestingCtx name
+  assignment <- checkAssignment assmt
+  popNestingCtx
+
+  variable <- defineVariable r2 name
+
+  pure $ assignment >>= (\assmt -> variable <&> (\var -> Assignment r1 var assmt))
+checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
+
+{- Checks a program for issues. -}
+checkProgram :: UncheckedProgram -> CheckerM Program
+checkProgram (UncheckedProgram r stmts) = do
+  checkedStmts <- reverse <$> mapM checkStatement stmts
+  let stmtIssues = concatMap checkResultIssues checkedStmts
+
+  let lastStmtIssues = case tryLast stmts of
+        -- The last statement must be a return statement.
+        Nothing -> [CheckIssue {range = r, severity = Error, msg = "A program needs at least one statement."}]
+        Just (UReturn _ _) -> []
+        Just _ -> [CheckIssue {range = r, severity = Error, msg = "The last statement of a program needs to be a return."}]
+
+  -- The first statement after a return statement is unreachable.
+  let unreachableIssues = case stmts & dropWhile (not . isReturn) & drop 1 & tryHead of
+        Nothing -> []
+        Just stmt -> [CheckIssue {range = getRange stmt, severity = Warning, msg = "Statement is unreachable"}]
+
+  let allIssues = concat [stmtIssues, lastStmtIssues, unreachableIssues]
+
+  if not $ any ((==) Error . severity) allIssues
+    then do
+      ctx <- get
+      pure $
+        Checked
+          allIssues
+          ( Program
+              { range = r
+              , stmts = mapMaybe checkResultValue checkedStmts
+              , strings = stringIndexes ctx
+              , variablesCount = nextVariableIndex ctx
+              , variablesSize = nextVariableOffset ctx
+              }
+          )
     else pure $ Failed $ NE.fromList allIssues
 
 {- Checks a project for issues. -}
