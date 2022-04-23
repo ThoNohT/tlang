@@ -206,7 +206,6 @@ eolsParser label = do
 projectTypeParser :: Parser' ProjectType
 projectTypeParser = do
   start <- gets (getRange . curTkn)
-  consumeExact (KeywordToken "Executable") "project type"
   consumeExact (SymbolToken ":") "project type"
   name <- consumeJust tryGetIdentifier "project name"
 
@@ -218,12 +217,12 @@ projectTypeParser = do
 --   An indentation of 0 means that the next token must not be an indentation token. Otherwise, a matching indentation
 --   token is consumed.
 indentParserM :: Natural -> Parser' ()
-indentParserM 0 = do
+indentParserM indent = do
+  tryConsumeExact (IndentationToken indent)
   t <- gets (tData . curTkn)
   case t of
     IndentationToken _ -> empty
     _ -> pure ()
-indentParserM indent = tryConsumeExact (IndentationToken indent)
 
 -- | A parser  for an assignment, which can be either directly an expression, or a block of statements.
 --   Will return Ignore if parsing the expression failed, or the block start was not matched (end of line).
@@ -280,10 +279,9 @@ expressionParserM = binaryParserM <|> intLiteralParserM <|> variableParserM
     variableParserM = do
       start <- gets (getRange . curTkn)
       (var, varRange) <- tryConsumeJust' tryGetIdentifier
-      exprMaybe <- optional expressionParserM
 
       end <- gets (getRange . prevTkn)
-      pure $ UVarExpr (rangeFromRanges start end) (UncheckedVariable varRange var) exprMaybe
+      pure $ UVarExpr (rangeFromRanges start end) (UncheckedVariable varRange var)
 
 -- | A parser for a print statement. Returns Ignore if the print keyword cannot be parsed,
 --   fails if anything later fails.
@@ -316,7 +314,6 @@ assignmentStmtParserM indent = do
   start <- gets (getRange . curTkn)
   tryConsumeExact (KeywordToken "let")
   (name, nameRange) <- consumeJust' tryGetIdentifier "assignment variable"
-  paramAndRangeMaybe <- optional $ tryConsumeJust' tryGetIdentifier
 
   consumeExact (SymbolToken "=") "assignment"
   assmtRange <- gets (getRange . curTkn)
@@ -328,7 +325,6 @@ assignmentStmtParserM indent = do
     ( UAssignment
         (rangeFromRanges start end)
         (UncheckedVariable nameRange name)
-        (uncurry (flip UncheckedVariable) <$> paramAndRangeMaybe)
         assmt,
       eols
     )

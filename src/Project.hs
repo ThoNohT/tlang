@@ -50,14 +50,12 @@ instance Formattable Operator where
 
 data Expression
   = IntLiteral {range :: Range, value :: Int}
-  | VarExpr {range :: Range, var :: Variable, param :: Maybe Expression}
+  | VarExpr {range :: Range, var :: Variable}
   | Binary {range :: Range, op :: Operator, left :: Expression, right :: Expression}
 
 instance Formattable Expression where
   formatBare uc (IntLiteral range int) = printf "%s %s %s" (formatBare uc range) (bold uc "IntLiteral") (color uc 35 $ show int)
-  formatBare uc (VarExpr range var Nothing) = printf "%s %s\n%s" (formatBare uc range) (bold uc "VarExpr") (format uc 1 var)
-  formatBare uc (VarExpr range var (Just param)) =
-    printf "%s %s\n%s\n%s" (formatBare uc range) (bold uc "VarExpr") (format uc 1 var) (format uc 1 param)
+  formatBare uc (VarExpr range var) = printf "%s %s\n%s" (formatBare uc range) (bold uc "VarExpr") (format uc 1 var)
   formatBare uc (Binary range op left right) =
     printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "Binary") (format uc 1 op) (format uc 1 left) (format uc 1 right)
 
@@ -73,16 +71,14 @@ instance Formattable Assignment where
 data Statement
   = PrintStr {range :: Range, string :: StringLiteral}
   | PrintExpr {range :: Range, expr :: Expression}
-  | Assignment {range :: Range, var :: Variable, arg :: Maybe Variable, assmt :: Assignment}
+  | Assignment {range :: Range, var :: Variable, assmt :: Assignment}
   | Return {range :: Range, expr :: Expression}
 
 instance Formattable Statement where
   formatBare uc (PrintStr range string) = printf "%s %s\n%s" (formatBare uc range) (bold uc "PrintStr") (format uc 1 string)
   formatBare uc (PrintExpr range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "PrintExpr") (format uc 1 expr)
-  formatBare uc (Assignment range var Nothing assmt) =
+  formatBare uc (Assignment range var  assmt) =
     printf "%s %s\n%s\n%s" (formatBare uc range) (bold uc "Assignment") (format uc 1 var) (format uc 1 assmt)
-  formatBare uc (Assignment range var (Just arg) assmt) =
-    printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "Assignment") (format uc 1 var) (format uc 1 arg) (format uc 1 assmt)
   formatBare uc (Return range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "Return") (format uc 1 expr)
 
 data Program = Program
@@ -131,14 +127,12 @@ instance Formattable UncheckedVariable where
 
 data UncheckedExpression
   = UIntLiteral {range :: Range, int :: Int}
-  | UVarExpr {range :: Range, var :: UncheckedVariable, param :: Maybe UncheckedExpression}
+  | UVarExpr {range :: Range, var :: UncheckedVariable}
   | UBinary {range :: Range, op :: Operator, left :: UncheckedExpression, right :: UncheckedExpression}
 
 instance Formattable UncheckedExpression where
   formatBare uc (UIntLiteral range int) = printf "%s %s %s" (formatBare uc range) (bold uc "UIntLiteral") (color uc 35 $ show int)
-  formatBare uc (UVarExpr range var Nothing) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UVarExpr") (format uc 1 var)
-  formatBare uc (UVarExpr range var (Just param)) =
-    printf "%s %s\n%s\n%s" (formatBare uc range) (bold uc "UVarExpr") (format uc 1 var) (format uc 1 param)
+  formatBare uc (UVarExpr range var) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UVarExpr") (format uc 1 var)
   formatBare uc (UBinary range op left right) =
     printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "UBinary") (format uc 1 op) (format uc 1 left) (format uc 1 right)
 
@@ -154,16 +148,14 @@ instance Formattable UncheckedAssignment where
 data UncheckedStatement
   = UPrintStr {range :: Range, string :: UncheckedStringLiteral}
   | UPrintExpr {range :: Range, expr :: UncheckedExpression}
-  | UAssignment {range :: Range, var :: UncheckedVariable, arg :: Maybe UncheckedVariable, assmt :: UncheckedAssignment}
+  | UAssignment {range :: Range, var :: UncheckedVariable, assmt :: UncheckedAssignment}
   | UReturn {range :: Range, expr :: UncheckedExpression}
 
 instance Formattable UncheckedStatement where
   formatBare uc (UPrintStr range string) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UPrintStr") (format uc 1 string)
   formatBare uc (UPrintExpr range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UPrintExpr") (format uc 1 expr)
-  formatBare uc (UAssignment range var Nothing assmt) =
+  formatBare uc (UAssignment range var assmt) =
     printf "%s %s\n%s\n%s" (formatBare uc range) (bold uc "UAssignment") (format uc 1 var) (format uc 1 assmt)
-  formatBare uc (UAssignment range var (Just arg) assmt) =
-    printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "UAssignment") (format uc 1 var) (format uc 1 arg) (format uc 1 assmt)
   formatBare uc (UReturn range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UReturn") (format uc 1 expr)
 
 isReturn :: UncheckedStatement -> Bool
