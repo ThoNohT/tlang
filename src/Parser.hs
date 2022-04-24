@@ -209,6 +209,7 @@ eolsParser label = do
 -- | A parser for a project type.
 projectTypeParser :: Parser' ProjectType
 projectTypeParser = do
+  consumeExact (KeywordToken "Executable") "project type"
   start <- gets (getRange . curTkn)
   consumeExact (SymbolToken ":") "project type"
   name <- consumeJust tryGetIdentifier "project name"
