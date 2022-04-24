@@ -1,15 +1,14 @@
-module CompilerFlag
-  ( CompilerFlag,
-    BuildFlag (..),
-    CleanFlag (..),
-    allFlags,
-    isActive,
-    explain,
-    fromString,
-    accumulate,
-    showFlags,
-  )
-where
+module CompilerFlag (
+  CompilerFlag,
+  BuildFlag (..),
+  CleanFlag (..),
+  allFlags,
+  isActive,
+  explain,
+  fromString,
+  accumulate,
+  showFlags,
+) where
 
 import Core (rightPad)
 import qualified Data.List as List (intercalate)
@@ -35,23 +34,24 @@ isActive = Set.member
 fromString :: CompilerFlag a => String -> Maybe a
 fromString str = Map.lookup str allFlags
 
--- | Converts a list of argument strings into a set of compiler flags containg all flags specified in the list.
---   If the list contains any invalid arguments, the list of invalid arguments is returned.
+{- | Converts a list of argument strings into a set of compiler flags containg all flags specified in the list.
+   If the list contains any invalid arguments, the list of invalid arguments is returned.
+-}
 accumulate :: CompilerFlag a => [String] -> Either [String] (Set a)
 accumulate = foldl checkArg (Right Set.empty)
-  where
-    checkArg acc arg =
-      case (fromString arg, acc) of
-        (Just flag, Right flags) -> Right (Set.insert flag flags)
-        (Nothing, Right _) -> Left [arg]
-        (Nothing, Left invalidArgs) -> Left (arg : invalidArgs)
-        _ -> acc
+ where
+  checkArg acc arg =
+    case (fromString arg, acc) of
+      (Just flag, Right flags) -> Right (Set.insert flag flags)
+      (Nothing, Right _) -> Left [arg]
+      (Nothing, Left invalidArgs) -> Left (arg : invalidArgs)
+      _ -> acc
 
 -- | Converts the list of flags into a string that can be displayed in the usage message.
 showFlags :: CompilerFlag a => Map String a -> String
 showFlags = unlines . fmap printFlag . Map.toList
-  where
-    printFlag (k, v) = printf "        %s %s" (rightPad ' ' 14 k) (explain v)
+ where
+  printFlag (k, v) = printf "        %s %s" (rightPad ' ' 14 k) (explain v)
 
 -- | A compiler flag for the build command.
 data BuildFlag
@@ -67,13 +67,13 @@ data BuildFlag
 instance CompilerFlag BuildFlag where
   allFlags =
     Map.fromList
-      [ ("-r", Run),
-        ("-dt", DumpLexerTokens),
-        ("-dtu", DumpUncheckedSyntaxTree),
-        ("-dtc", DumpCheckedSyntaxTree),
-        ("-app", PrettyPrintAsm),
-        ("-nasm", UseNasm),
-        ("-nc", NoColor)
+      [ ("-r", Run)
+      , ("-dt", DumpLexerTokens)
+      , ("-dtu", DumpUncheckedSyntaxTree)
+      , ("-dtc", DumpCheckedSyntaxTree)
+      , ("-app", PrettyPrintAsm)
+      , ("-nasm", UseNasm)
+      , ("-nc", NoColor)
       ]
   explain = \case
     Run -> "Run the program after compiling it."

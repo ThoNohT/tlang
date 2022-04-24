@@ -4,25 +4,25 @@ import Console (Formattable (formatBare))
 import Control.Applicative (Alternative (empty, many, (<|>)), optional)
 import Control.Monad ((>=>))
 import Data.Bifunctor (Bifunctor (first))
-import Data.List qualified as List (filter, uncons)
+import qualified Data.List as List (filter, uncons)
 import Data.Text (Text)
-import Data.Text qualified as T
-import Lexer
-  ( Range,
-    Token (..),
-    TokenData (..),
-    getRange,
-    ignoreToken,
-    isEol,
-    isSeparator,
-    rangeFromRanges,
-    rangeToFileText,
-    tokenToFileText,
-    tryGetIdentifier,
-    tryGetNumber,
-    tryGetStringLiteral,
-    tryGetSymbol,
-  )
+import qualified Data.Text as T
+import Lexer (
+  Range,
+  Token (..),
+  TokenData (..),
+  getRange,
+  ignoreToken,
+  isEol,
+  isSeparator,
+  rangeFromRanges,
+  rangeToFileText,
+  tokenToFileText,
+  tryGetIdentifier,
+  tryGetNumber,
+  tryGetStringLiteral,
+  tryGetSymbol,
+ )
 import Numeric.Natural (Natural)
 import Project
 import Text.Printf (printf)
@@ -37,8 +37,9 @@ createParserState useColor tokens =
     Just (cur, tail) -> Right $ ParserState {uc = useColor, input = tail, prevTkn = cur, curTkn = cur}
     _ -> Left "Error parsing, no input."
 
--- | Moves to the next token in the input.
---   If the last token has been reached, this token will be moved into nxtTkn, curTKn and then prevTkn.
+{- | Moves to the next token in the input.
+   If the last token has been reached, this token will be moved into nxtTkn, curTKn and then prevTkn.
+-}
 nextToken :: ParserState -> ParserState
 nextToken state@ParserState {input, curTkn} =
   case List.uncons input of
@@ -102,8 +103,9 @@ pfail err = Parser $ const $ Failure $ T.pack err
 get :: Parser s s
 get = Parser $ \s -> pure (s, s)
 
--- | A parser that returns the specifed mapping over the current state.
---   Can be useful to get a specific field.
+{- | A parser that returns the specifed mapping over the current state.
+   Can be useful to get a specific field.
+-}
 gets :: (s -> a) -> Parser s a
 gets f = f <$> get
 
@@ -128,8 +130,9 @@ run :: Parser' a -> Bool -> [Token] -> Either String a
 run (Parser p) useColor input =
   fst <$> (parseResultToEither . p =<< createParserState useColor (List.filter (not . ignoreToken . tData) input))
 
--- | Returns the next token from the input. Will be an EndOfInputToken every time once the end of the input has been
---   reached.
+{- | Returns the next token from the input. Will be an EndOfInputToken every time once the end of the input has been
+   reached.
+-}
 pToken :: Parser' Token
 pToken = Parser $ \s ->
   let s' = nextToken s
@@ -187,20 +190,21 @@ eolParser label = consumeIf isEol $ printf "%s end of line" label
 
 {- Parsers for domain types -}
 
--- | A parser that parses one end of line, and then any number of empty lines, optionally preceded by whitespace.
---   If the first end of line fails, the parser fails. Any other empty lines are optional.
+{- | A parser that parses one end of line, and then any number of empty lines, optionally preceded by whitespace.
+   If the first end of line fails, the parser fails. Any other empty lines are optional.
+-}
 eolsParser :: String -> Parser' ()
 eolsParser label = do
   eolParser label
   () <$ many emptyLineParser
-  where
-    -- Parses an empty line, optionally with an indentation token in it. Returns Ignore if it was not matched.
-    emptyLineParser = do
-      tkn <- pToken
-      case tData tkn of
-        IndentationToken _ -> tryConsumeIf isEol
-        EndOfLineToken _ -> pure ()
-        _ -> empty
+ where
+  -- Parses an empty line, optionally with an indentation token in it. Returns Ignore if it was not matched.
+  emptyLineParser = do
+    tkn <- pToken
+    case tData tkn of
+      IndentationToken _ -> tryConsumeIf isEol
+      EndOfLineToken _ -> pure ()
+      _ -> empty
 
 -- | A parser for a project type.
 projectTypeParser :: Parser' ProjectType
@@ -213,9 +217,10 @@ projectTypeParser = do
   eolsParser "project type"
   pure $ Executable (rangeFromRanges start end) name
 
--- | A parser that consumes the specified indentation token, and returns Ignore if this was not possible.
---   An indentation of 0 means that the next token must not be an indentation token. Otherwise, a matching indentation
---   token is consumed.
+{- | A parser that consumes the specified indentation token, and returns Ignore if this was not possible.
+   An indentation of 0 means that the next token must not be an indentation token. Otherwise, a matching indentation
+   token is consumed.
+-}
 indentParserM :: Natural -> Parser' ()
 indentParserM indent = do
   tryConsumeExact (IndentationToken indent)
@@ -224,9 +229,10 @@ indentParserM indent = do
     IndentationToken _ -> empty
     _ -> pure ()
 
--- | A parser  for an assignment, which can be either directly an expression, or a block of statements.
---   Will return Ignore if parsing the expression failed, or the block start was not matched (end of line).
---   Block statements will be parsed as long as the indentation is correct.
+{- | A parser  for an assignment, which can be either directly an expression, or a block of statements.
+   Will return Ignore if parsing the expression failed, or the block start was not matched (end of line).
+   Block statements will be parsed as long as the indentation is correct.
+-}
 assignmentParserM :: Natural -> Parser' (UncheckedAssignment, Bool)
 assignmentParserM indent = do
   startTkn <- gets curTkn
@@ -242,8 +248,8 @@ assignmentParserM indent = do
 -- | A parser for an operator, returns Ignore if an operator could not be parsed.
 operatorParserM :: Parser' Operator
 operatorParserM = tryOp "+" Add <|> tryOp "-" Sub
-  where
-    tryOp sym typ = typ . snd <$> tryConsumeJust' (tryGetSymbol sym)
+ where
+  tryOp sym typ = typ . snd <$> tryConsumeJust' (tryGetSymbol sym)
 
 -- | A parser for a number, returns Ignore if a number cannot be fully parsed.
 numberParserM :: Parser' (Int, Range)
@@ -256,35 +262,37 @@ numberParserM = do
   end <- gets (getRange . prevTkn)
   pure (sign * num, rangeFromRanges start end)
 
--- | A parser for an expression. Returns Ignore if any of the sub expression parsers returns ignore,
---   fails if any of the sub expression parsers fails.
+{- | A parser for an expression. Returns Ignore if any of the sub expression parsers returns ignore,
+   fails if any of the sub expression parsers fails.
+-}
 expressionParserM :: Parser' UncheckedExpression
 expressionParserM = binaryParserM <|> intLiteralParserM <|> variableParserM
-  where
-    binaryParserM :: Parser' UncheckedExpression
-    binaryParserM = do
-      start <- gets (getRange . curTkn)
-      -- Left side of a binary expression cannot be a recursive expression, to prevent infinite loops.
-      left <- intLiteralParserM <|> variableParserM
-      op <- operatorParserM
-      right <- expressionParserM
+ where
+  binaryParserM :: Parser' UncheckedExpression
+  binaryParserM = do
+    start <- gets (getRange . curTkn)
+    -- Left side of a binary expression cannot be a recursive expression, to prevent infinite loops.
+    left <- intLiteralParserM <|> variableParserM
+    op <- operatorParserM
+    right <- expressionParserM
 
-      end <- gets (getRange . prevTkn)
-      pure $ UBinary (rangeFromRanges start end) op left right
+    end <- gets (getRange . prevTkn)
+    pure $ UBinary (rangeFromRanges start end) op left right
 
-    intLiteralParserM :: Parser' UncheckedExpression
-    intLiteralParserM = uncurry (flip UIntLiteral) <$> numberParserM
+  intLiteralParserM :: Parser' UncheckedExpression
+  intLiteralParserM = uncurry (flip UIntLiteral) <$> numberParserM
 
-    variableParserM :: Parser' UncheckedExpression
-    variableParserM = do
-      start <- gets (getRange . curTkn)
-      (var, varRange) <- tryConsumeJust' tryGetIdentifier
+  variableParserM :: Parser' UncheckedExpression
+  variableParserM = do
+    start <- gets (getRange . curTkn)
+    (var, varRange) <- tryConsumeJust' tryGetIdentifier
 
-      end <- gets (getRange . prevTkn)
-      pure $ UVarExpr (rangeFromRanges start end) (UncheckedVariable varRange var)
+    end <- gets (getRange . prevTkn)
+    pure $ UVarExpr (rangeFromRanges start end) (UncheckedVariable varRange var)
 
--- | A parser for a print statement. Returns Ignore if the print keyword cannot be parsed,
---   fails if anything later fails.
+{- | A parser for a print statement. Returns Ignore if the print keyword cannot be parsed,
+   fails if anything later fails.
+-}
 printStmtParserM :: Parser' (UncheckedStatement, Bool)
 printStmtParserM = do
   start <- gets (getRange . curTkn)
@@ -307,8 +315,9 @@ printStmtParserM = do
           (tft nextToken)
           (fb uc nextToken)
 
--- | A parser for anassignment statement. Returns Ignore if the let keyword cannot be parsed,
---   fails if anything later fails.
+{- | A parser for anassignment statement. Returns Ignore if the let keyword cannot be parsed,
+   fails if anything later fails.
+-}
 assignmentStmtParserM :: Natural -> Parser' (UncheckedStatement, Bool)
 assignmentStmtParserM indent = do
   start <- gets (getRange . curTkn)
@@ -325,12 +334,13 @@ assignmentStmtParserM indent = do
     ( UAssignment
         (rangeFromRanges start end)
         (UncheckedVariable nameRange name)
-        assmt,
-      eols
+        assmt
+    , eols
     )
 
--- | A parser for a return statement. Returns Ignore if the return keyword cannot be parsed,
---   fails if anything later fails.
+{- | A parser for a return statement. Returns Ignore if the return keyword cannot be parsed,
+   fails if anything later fails.
+-}
 returnStmtParserM :: Parser' (UncheckedStatement, Bool)
 returnStmtParserM = do
   start <- gets (getRange . curTkn)
@@ -340,8 +350,9 @@ returnStmtParserM = do
   end <- gets (getRange . prevTkn)
   pure (UReturn (rangeFromRanges start end) expr, True)
 
--- | A parser for a statement. Returns Ignore if any of the sub parsers returns ignore.
---   Fails when any of the sub parsers or the  end of line parser fails.
+{- | A parser for a statement. Returns Ignore if any of the sub parsers returns ignore.
+   Fails when any of the sub parsers or the  end of line parser fails.
+-}
 statementParserM :: Natural -> Parser' UncheckedStatement
 statementParserM indent = do
   indentParserM indent

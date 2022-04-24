@@ -11,12 +11,13 @@ import Text.Printf (printf)
 
 {- Project -}
 
-{- An index in a list. -}
+-- | An index in a list.
 newtype Index = Index Int deriving (Show)
 
-{- An offset in memory. -}
+-- | An offset in memory.
 newtype Offset = Offset Int deriving (Show)
 
+-- | A string literal, including its index among all string literals.
 data StringLiteral = StringLiteral {range :: Range, index :: Index, string :: Text}
 
 instance Formattable StringLiteral where
@@ -28,6 +29,7 @@ instance Formattable StringLiteral where
       (color uc 35 $ show index)
       (color uc 35 $ T.unpack string)
 
+-- | A variable, including its index among all variables, its offset in memory, and the context in which it is defined.
 data Variable = Variable {range :: Range, index :: Index, offset :: Offset, name :: Text, context :: [Text]}
 
 instance Formattable Variable where
@@ -42,12 +44,14 @@ instance Formattable Variable where
           (color uc 35 $ show offset)
           (color uc 35 ctx)
 
+-- | An operator.
 data Operator = Add {range :: Range} | Sub {range :: Range}
 
 instance Formattable Operator where
   formatBare uc (Add range) = printf "%s %s" (formatBare uc range) (bold uc "Add")
   formatBare uc (Sub range) = printf "%s %s" (formatBare uc range) (bold uc "Sub")
 
+-- | An expression used for calculating a value.
 data Expression
   = IntLiteral {range :: Range, value :: Int}
   | VarExpr {range :: Range, var :: Variable}
@@ -59,6 +63,7 @@ instance Formattable Expression where
   formatBare uc (Binary range op left right) =
     printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "Binary") (format uc 1 op) (format uc 1 left) (format uc 1 right)
 
+-- | The assignment of an expression, or a block of statements ending with a return statement, to a variable.
 data Assignment
   = ExprAssignment {range :: Range, expr :: Expression}
   | BlockAssignment {range :: Range, stmts :: [Statement]}
@@ -68,6 +73,7 @@ instance Formattable Assignment where
   formatBare uc (BlockAssignment range stmts) =
     printf "%s %s\n%s" (formatBare uc range) (bold uc "BlockAssignment") (List.intercalate "\n" $ map (format uc 1) stmts)
 
+-- | A single statement.
 data Statement
   = PrintStr {range :: Range, string :: StringLiteral}
   | PrintExpr {range :: Range, expr :: Expression}
@@ -77,10 +83,11 @@ data Statement
 instance Formattable Statement where
   formatBare uc (PrintStr range string) = printf "%s %s\n%s" (formatBare uc range) (bold uc "PrintStr") (format uc 1 string)
   formatBare uc (PrintExpr range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "PrintExpr") (format uc 1 expr)
-  formatBare uc (Assignment range var  assmt) =
+  formatBare uc (Assignment range var assmt) =
     printf "%s %s\n%s\n%s" (formatBare uc range) (bold uc "Assignment") (format uc 1 var) (format uc 1 assmt)
   formatBare uc (Return range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "Return") (format uc 1 expr)
 
+-- | A program, containing all statements and additional information about memory layout.
 data Program = Program
   { range :: Range
   , stmts :: [Statement]
@@ -100,11 +107,13 @@ instance Formattable Program where
       (color uc 35 $ show vs)
       (color uc 35 $ show vc)
 
+-- | Type information about a project, including its name.
 data ProjectType = Executable {range :: Range, name :: Text}
 
 instance Formattable ProjectType where
   formatBare uc (Executable range name) = printf "%s %s %s" (formatBare uc range) (bold uc "Executable") (color uc 35 (T.unpack name))
 
+-- | A project is the top level type being run, containing type project type, and the program to be run.
 data Project = Project {projectType :: ProjectType, program :: Program}
 
 instance Formattable Project where
@@ -113,18 +122,21 @@ instance Formattable Project where
 
 {- UnheckedProject -}
 
+-- | Unchecked version of StringLiteral.
 data UncheckedStringLiteral = UncheckedStringLiteral {range :: Range, string :: Text}
 
 instance Formattable UncheckedStringLiteral where
   formatBare uc (UncheckedStringLiteral range string) =
     printf "%s %s \"%s\"" (formatBare uc range) (bold uc "UncheckedStringLiteral") (color uc 35 $ T.unpack string)
 
+-- | Unchecked version of Variable.
 data UncheckedVariable = UncheckedVariable {range :: Range, name :: Text}
 
 instance Formattable UncheckedVariable where
   formatBare uc (UncheckedVariable range name) =
     printf "%s %s %s" (formatBare uc range) (bold uc "UncheckedVariable") (color uc 35 $ T.unpack name)
 
+-- | Unchecked version of Expression.
 data UncheckedExpression
   = UIntLiteral {range :: Range, int :: Int}
   | UVarExpr {range :: Range, var :: UncheckedVariable}
@@ -136,6 +148,7 @@ instance Formattable UncheckedExpression where
   formatBare uc (UBinary range op left right) =
     printf "%s %s\n%s\n%s\n%s" (formatBare uc range) (bold uc "UBinary") (format uc 1 op) (format uc 1 left) (format uc 1 right)
 
+-- | Unchecked version of Assignment.
 data UncheckedAssignment
   = UExprAssignment {range :: Range, expr :: UncheckedExpression}
   | UBlockAssignment {range :: Range, stmts :: [UncheckedStatement]}
@@ -145,6 +158,7 @@ instance Formattable UncheckedAssignment where
   formatBare uc (UBlockAssignment range stmts) =
     printf "%s %s\n%s" (formatBare uc range) (bold uc "UBlockAssignment") (List.intercalate "\n" $ map (format uc 1) stmts)
 
+-- | Unchecked version of Statement.
 data UncheckedStatement
   = UPrintStr {range :: Range, string :: UncheckedStringLiteral}
   | UPrintExpr {range :: Range, expr :: UncheckedExpression}
@@ -158,16 +172,19 @@ instance Formattable UncheckedStatement where
     printf "%s %s\n%s\n%s" (formatBare uc range) (bold uc "UAssignment") (format uc 1 var) (format uc 1 assmt)
   formatBare uc (UReturn range expr) = printf "%s %s\n%s" (formatBare uc range) (bold uc "UReturn") (format uc 1 expr)
 
+-- | Indicates whether an UncheckedStatement is a return statement.
 isReturn :: UncheckedStatement -> Bool
 isReturn (UReturn _ _) = True
 isReturn _ = False
 
+-- | Unchecked version of Program.
 data UncheckedProgram = UncheckedProgram {range :: Range, stmts :: [UncheckedStatement]}
 
 instance Formattable UncheckedProgram where
   formatBare uc (UncheckedProgram range stmts) =
     printf "%s %s\n%s" (formatBare uc range) (bold uc "UncheckedProgram") (List.intercalate "\n" $ map (format uc 1) stmts)
 
+-- | Unchecked version of Project.
 data UncheckedProject = UncheckedProject {projectType :: ProjectType, program :: UncheckedProgram}
 
 instance Formattable UncheckedProject where

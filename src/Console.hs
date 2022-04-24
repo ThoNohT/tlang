@@ -1,24 +1,23 @@
 {-# LANGUAGE NoOverloadedStrings #-}
 
-module Console
-  ( color,
-    bold,
-    faint,
-    Formattable,
-    format,
-    formatBare,
-    getFlagsOrExit,
-    printUsage,
-    testConditionWithUsageError,
-    testCondition,
-    assertJustWithUsageError,
-    assertJust,
-    assertRight,
-    exitWithError,
-    exitWithUsageError,
-    runCmdEchoed,
-  )
-where
+module Console (
+  color,
+  bold,
+  faint,
+  Formattable,
+  format,
+  formatBare,
+  getFlagsOrExit,
+  printUsage,
+  testConditionWithUsageError,
+  testCondition,
+  assertJustWithUsageError,
+  assertJust,
+  assertRight,
+  exitWithError,
+  exitWithUsageError,
+  runCmdEchoed,
+) where
 
 import CompilerFlag (BuildFlag, CleanFlag, CompilerFlag, allFlags, showFlags)
 import Core (rightPad)
@@ -34,8 +33,9 @@ import System.IO (hPutStrLn)
 import System.Process (readProcessWithExitCode, showCommandForUser)
 import Text.Printf (printf)
 
--- | Applies a color coding around the specified string.
---   https://chrisyeh96.github.io/2020/03/28/terminal-colors.html
+{- | Applies a color coding around the specified string.
+   https://chrisyeh96.github.io/2020/03/28/terminal-colors.html
+-}
 color :: Bool -> Int -> String -> String
 color False _ elem = elem
 color True nr elem = printf "%s%i%s%s%s" "\x1b[" nr "m" elem "\x1b[0m"
@@ -46,8 +46,9 @@ bold = flip color 1
 -- | Makes the specified string look less intense.
 faint = flip color 2
 
--- | Formattable objects can be easily formatted, and their formatted strings can be used in the formatting of other
---   objects, while easily keeping track of the indentation needed to format everything in a nested manner.
+{- | Formattable objects can be easily formatted, and their formatted strings can be used in the formatting of other
+   objects, while easily keeping track of the indentation needed to format everything in a nested manner.
+-}
 class Formattable a where
   -- | Create a formatted string for an object without being concerned with indentation.
   formatBare :: Bool -> a -> String
@@ -55,17 +56,18 @@ class Formattable a where
 -- | Format an object using formatBare, and then applying the specified indentation.
 format :: Formattable a => Bool -> Int -> a -> String
 format useColor indent = List.intercalate "\n" . fmap indentLine . lines . formatBare useColor
-  where
-    indentLine l =
-      if indent > 0
-        then printf " %s%s" (faint useColor $ color useColor 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
-        else l
+ where
+  indentLine l =
+    if indent > 0
+      then printf " %s%s" (faint useColor $ color useColor 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
+      else l
 
 -- | Print the specified text to stderr.
 ePutStrLn = hPutStrLn stderr
 
--- | Gets the set of flags from an Either that contains the flags or the list of invalid flags.
---   If there are invalid flags, an error message is printed to stderr and the program exits.
+{- | Gets the set of flags from an Either that contains the flags or the list of invalid flags.
+   If there are invalid flags, an error message is printed to stderr and the program exits.
+-}
 getFlagsOrExit :: CompilerFlag a => String -> Either [String] (Set a) -> IO (Set a)
 getFlagsOrExit compilerName = \case
   Left invalidFlags -> exitWithUsageError compilerName $ printf "Invalid flags: %s" (List.intercalate ", " invalidFlags)
@@ -82,8 +84,9 @@ printUsage compilerName = do
   putStrLn "      OPTIONS:"
   putStrLn $ showFlags (allFlags :: Map String CleanFlag)
 
--- | Checks a condition, and if it fails, shows the usage string and the specified error
---   and then exits with exit code 1.
+{- | Checks a condition, and if it fails, shows the usage string and the specified error
+   and then exits with exit code 1.
+-}
 testConditionWithUsageError :: String -> Bool -> String -> IO ()
 testConditionWithUsageError compilerName False error = exitWithUsageError compilerName error
 testConditionWithUsageError compilerName True error = pure ()
@@ -93,8 +96,9 @@ testCondition :: Bool -> String -> IO ()
 testCondition False error = exitWithError error
 testCondition True error = pure ()
 
--- | Unwraps a Maybe, and if it is Nothing, shows the usage string and the specified error
---   and then exits with exit code 1.
+{- | Unwraps a Maybe, and if it is Nothing, shows the usage string and the specified error
+   and then exits with exit code 1.
+-}
 assertJustWithUsageError :: String -> String -> Maybe a -> IO a
 assertJustWithUsageError compilerName error Nothing = exitWithUsageError compilerName error
 assertJustWithUsageError _ _ (Just v) = pure v
@@ -121,9 +125,10 @@ exitWithUsageError compilerName error = do
   printUsage compilerName
   exitWithError error
 
--- | Runs a command and echoes the command to stdout.
---   If the command fails, the output from stderr is returned and the program exits.
---   Stdout output of the command is only displayed if requested.
+{- | Runs a command and echoes the command to stdout.
+   If the command fails, the output from stderr is returned and the program exits.
+   Stdout output of the command is only displayed if requested.
+-}
 runCmdEchoed :: FilePath -> [String] -> Bool -> IO ()
 runCmdEchoed path args echoStdOut = do
   let showCmd = showCommandForUser path args

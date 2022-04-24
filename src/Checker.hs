@@ -18,29 +18,29 @@ import Lexer (Range, WithRange (getRange), rangeFromRanges)
 import Project
 import Text.Printf (printf)
 
-{- The different severities for a check issue. An Error prevents compilation. -}
+-- | The different severities for a check issue. An Error prevents compilation.
 data CheckSeverity = Error | Warning deriving (Eq)
 
 instance Formattable CheckSeverity where
   formatBare uc Error = color uc 31 "Error"
   formatBare uc Warning = color uc 33 "Warning"
 
-{- An issue found when checking a project. -}
+-- | An issue found when checking a project.
 data CheckIssue = CheckIssue {range :: Range, severity :: CheckSeverity, msg :: Text}
 
 instance Formattable CheckIssue where
   formatBare uc CheckIssue {range, severity, msg} =
     printf "%s: %s: %s" (formatBare uc range) (formatBare uc severity) msg
 
-{- The result of a check. Even a successful check result can have issues. -}
+-- | The result of a check. Even a successful check result can have issues.
 data CheckResult a = Checked [CheckIssue] a | Failed (NonEmpty CheckIssue)
 
-{- Returns the value from a check result, or Nothing if it was failed. -}
+-- | Returns the value from a check result, or Nothing if it was failed.
 checkResultValue :: CheckResult a -> Maybe a
 checkResultValue (Checked _ r) = Just r
 checkResultValue _ = Nothing
 
-{- Returns the issues in a check result. -}
+-- | Returns the issues in a check result.
 checkResultIssues :: CheckResult a -> [CheckIssue]
 checkResultIssues (Checked issues _) = issues
 checkResultIssues (Failed issues) = NE.toList issues
@@ -69,7 +69,8 @@ instance Monad CheckResult where
       Failed issues' -> Failed $ NE.prependList issues issues'
       Checked issues' a' -> Checked (issues <> issues') a'
 
-data CheckerContext = CheckerContext
+-- | All state information needed by a checker.
+data CheckerState = CheckerState
   { -- The strings known throughout the program and their indexes.
     stringIndexes :: Map Text Index
   , -- The variables known in the current scope and their index an offsets.
@@ -83,22 +84,25 @@ data CheckerContext = CheckerContext
     nestingCtx :: [Text]
   }
 
-{- The monad in which the checker runs, contains state, and returns a CheckResult. -}
+-- | The monad in which the checker runs, contains state, and returns a CheckResult.
 type CheckerM a = CheckerM' (CheckResult a)
 
-{- CheckerM, but not with a CheckResult. -}
-type CheckerM' a = State CheckerContext a
+-- | CheckerM, but not with a CheckResult.
+type CheckerM' a = State CheckerState a
 
-{- Pushes a new variable on the nesting context. -}
+{- State helpers -}
+
+-- | Pushes a new variable on the nesting context.
 pushNestingCtx :: Text -> CheckerM' ()
 pushNestingCtx name = modify' (\s -> s {nestingCtx = name : (nestingCtx s)})
 
-{- Pops the last variable from the nesting contex. -}
+-- | Pops the last variable from the nesting contex.
 popNestingCtx :: CheckerM' ()
 popNestingCtx = modify' (\s -> s {nestingCtx = drop 1 (nestingCtx s)})
 
-{- Returns the string index for the specified string and updates the set of string literals. If the string was defined
-   before, this index is returned to prevent allocating a new string. -}
+{- | Returns the string index for the specified string and updates the set of string literals. If the string was
+     defined before, this index is returned to prevent allocating a new string.
+-}
 getStringIndex :: Text -> CheckerM' Index
 getStringIndex str = do
   stringIndexes' <- gets stringIndexes
@@ -109,12 +113,17 @@ getStringIndex str = do
       modify' (\s -> s {stringIndexes = Map.insert str idx stringIndexes'})
       pure idx
 
+-- | TODO: Document function.
 defineVariable :: Range -> Text -> CheckerM Variable
 defineVariable range name = undefined
 
+-- | TODO: Document function.
 getVariable :: Range -> Text -> CheckerM Variable
 getVariable range name = undefined
 
+{- Check methods -}
+
+-- | Checks an expression.
 checkExpr :: UncheckedExpression -> CheckerM Expression
 checkExpr (UIntLiteral r intVal) = pure $ Checked [] (IntLiteral r intVal)
 checkExpr (UVarExpr r1 (UncheckedVariable r2 name)) = fmap (VarExpr r1) <$> getVariable r2 name
@@ -123,6 +132,7 @@ checkExpr (UBinary r op exL exR) = do
   cExR <- checkExpr exR
   pure $ cExL >>= \le -> cExR <&> \re -> Binary r op le re
 
+-- | Checks an assignment.
 checkAssignment :: UncheckedAssignment -> CheckerM Assignment
 checkAssignment (UExprAssignment r expr) = fmap (ExprAssignment r) <$> checkExpr expr
 checkAssignment (UBlockAssignment r stmts) = do
@@ -152,6 +162,7 @@ checkAssignment (UBlockAssignment r stmts) = do
     then pure $ Checked allIssues (BlockAssignment r (mapMaybe checkResultValue checkedStmts))
     else pure $ Failed $ NE.fromList allIssues
 
+-- | Checks a statement.
 checkStatement :: UncheckedStatement -> CheckerM Statement
 checkStatement (UPrintStr r1 (UncheckedStringLiteral r2 str)) = do
   idx <- getStringIndex str
@@ -169,7 +180,7 @@ checkStatement (UAssignment r1 (UncheckedVariable r2 name) assmt) = do
   pure $ assignment >>= (\assmt -> variable <&> (\var -> Assignment r1 var assmt))
 checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
 
-{- Checks a program for issues. -}
+-- | Checks a program.
 checkProgram :: UncheckedProgram -> CheckerM Program
 checkProgram (UncheckedProgram r stmts) = do
   checkedStmts <- reverse <$> mapM checkStatement stmts
@@ -204,13 +215,13 @@ checkProgram (UncheckedProgram r stmts) = do
           )
     else pure $ Failed $ NE.fromList allIssues
 
-{- Checks a project for issues. -}
+-- | Checks a project, returning any issues that were found, and the checked project.
 checkProject :: UncheckedProject -> CheckResult Project
 checkProject (UncheckedProject projectType program) =
   Project projectType <$> evalState (checkProgram program) initialContext
  where
   initialContext =
-    CheckerContext
+    CheckerState
       { stringIndexes = Map.empty
       , variableOffsets = Map.empty
       , nextVariableIndex = Index 0
