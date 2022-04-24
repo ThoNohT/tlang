@@ -3,6 +3,7 @@
 module Console (
   color,
   bold,
+  ePutStrLn,
   faint,
   Formattable,
   format,
@@ -21,7 +22,8 @@ module Console (
 
 import CompilerFlag (BuildFlag, CleanFlag, CompilerFlag, allFlags, showFlags)
 import Core (rightPad)
-import Data.List as List (intercalate)
+import Data.Foldable (Foldable (toList))
+import qualified Data.List as List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Set (Set)
@@ -61,6 +63,9 @@ format useColor indent = List.intercalate "\n" . fmap indentLine . lines . forma
     if indent > 0
       then printf " %s%s" (faint useColor $ color useColor 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
       else l
+
+instance (Foldable t, Functor t, Formattable a) => Formattable (t a) where
+  formatBare useColor = List.intercalate "\n" . toList . fmap (formatBare useColor)
 
 -- | Print the specified text to stderr.
 ePutStrLn = hPutStrLn stderr

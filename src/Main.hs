@@ -1,8 +1,9 @@
 module Main where
 
+import qualified Checker as C
 import CompilerFlag (BuildFlag (..), CleanFlag (..))
 import qualified CompilerFlag (accumulate, isActive)
-import qualified Console (assertJustWithUsageError, assertRight, exitWithUsageError, formatBare, getFlagsOrExit, runCmdEchoed)
+import qualified Console (assertJustWithUsageError, assertRight, ePutStrLn, exitWithUsageError, formatBare, getFlagsOrExit, runCmdEchoed)
 import Data.Bifunctor (Bifunctor (first, second))
 import qualified Data.List as List (uncons)
 import Data.Set (Set)
@@ -12,7 +13,7 @@ import qualified Data.Text as T
 import Lexer (lexFile)
 import qualified Parser as P
 import System.Environment (getArgs, getProgName)
-import System.Exit (exitSuccess)
+import System.Exit (exitFailure, exitSuccess)
 import Text.Printf (printf)
 
 -- | All keywords in the language.
@@ -22,7 +23,10 @@ keywords = Set.fromList ["Executable", "let", "print", "return"]
 -- | Compiles the project in the specified file. Returns the file path to the executable that was compiled.
 compile :: FilePath -> Set BuildFlag -> IO FilePath
 compile fileName flags = do
+  -- Read file.
   input <- readFile fileName
+
+  -- Run lexer.
   tokens <- Console.assertRight $ first T.unpack $ lexFile keywords fileName $ T.pack input
 
   let useColor = not $ CompilerFlag.isActive NoColor flags
@@ -33,6 +37,7 @@ compile fileName flags = do
       exitSuccess
     else pure ()
 
+  -- Run parser.
   uncheckedProject <- Console.assertRight $ P.run P.projectParser useColor tokens
 
   if CompilerFlag.isActive DumpUncheckedSyntaxTree flags
@@ -41,7 +46,27 @@ compile fileName flags = do
       exitSuccess
     else pure ()
 
-  undefined
+  -- Run checker.
+  case C.checkProject uncheckedProject of
+    C.Failed issues -> do
+      Console.ePutStrLn "Issues found:\n"
+      Console.ePutStrLn $ Console.formatBare useColor issues
+      exitFailure
+    C.Checked issues project -> do
+      if not $ null issues
+        then do
+          putStrLn "Issues found:\n"
+          putStrLn $ Console.formatBare useColor issues
+        else pure ()
+
+      if CompilerFlag.isActive DumpCheckedSyntaxTree flags
+        then do
+          putStrLn $ Console.formatBare useColor project
+          exitSuccess
+        else pure ()
+
+      -- TODO: Run compiler.
+      undefined
 
 -- | Cleans up the intermediary files created while compiling the program.
 cleanup :: FilePath -> Set CleanFlag -> IO ()

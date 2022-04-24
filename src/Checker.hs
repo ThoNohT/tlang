@@ -1,4 +1,4 @@
-module Checker (checkProject) where
+module Checker (checkProject, CheckResult (..), CheckSeverity (..), CheckIssue (..)) where
 
 import Console (Formattable (formatBare), color)
 import Control.Monad (foldM)
