@@ -8,10 +8,10 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (foldl)
 import Data.Function ((&))
 import Data.Functor ((<&>))
-import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE (fromList, head, prependList, tail, toList)
-import Data.Map (Map, (!?))
-import qualified Data.Map as Map (empty, insert, size)
+import Data.Map.Strict (Map, insert, (!?))
+import qualified Data.Map.Strict as Map (empty, insert, size)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Lexer (Range, WithRange (getRange), rangeFromRanges)
@@ -73,8 +73,8 @@ instance Monad CheckResult where
 data CheckerState = CheckerState
   { -- The strings known throughout the program and their indexes.
     stringIndexes :: Map Text Index
-  , -- The variables known in the current scope and their index an offsets.
-    variableOffsets :: Map Text (Index, Offset)
+  , -- The variables known in the current scope.
+    knownVariables :: Map Text Variable
   , -- The index for the next variable to be defined.
     nextVariableIndex :: Index
   , -- The offset for the next variable to be defined.
@@ -94,11 +94,11 @@ type CheckerM' a = State CheckerState a
 
 -- | Pushes a new variable on the nesting context.
 pushNestingCtx :: Text -> CheckerM' ()
-pushNestingCtx name = modify' (\s -> s {nestingCtx = name : (nestingCtx s)})
+pushNestingCtx name = modify' $ \s -> s {nestingCtx = name : (nestingCtx s)}
 
 -- | Pops the last variable from the nesting contex.
 popNestingCtx :: CheckerM' ()
-popNestingCtx = modify' (\s -> s {nestingCtx = drop 1 (nestingCtx s)})
+popNestingCtx = modify' $ \s -> s {nestingCtx = drop 1 (nestingCtx s)}
 
 {- | Returns the string index for the specified string and updates the set of string literals. If the string was
      defined before, this index is returned to prevent allocating a new string.
@@ -110,16 +110,41 @@ getStringIndex str = do
     Just idx -> pure idx
     Nothing -> do
       let idx = Index $ Map.size $ stringIndexes'
-      modify' (\s -> s {stringIndexes = Map.insert str idx stringIndexes'})
+      modify' $ \s -> s {stringIndexes = Map.insert str idx stringIndexes'}
       pure idx
 
--- | TODO: Document function.
+-- | Defines a variable. If a variable with the same name is already defined, an error is returned.
 defineVariable :: Range -> Text -> CheckerM Variable
-defineVariable range name = undefined
+defineVariable range name = do
+  vars <- gets knownVariables
 
--- | TODO: Document function.
+  case vars !? name of
+    Just _ ->
+      pure $
+        Failed $
+          (CheckIssue {range = range, severity = Error, msg = printf "Variable %s already defined." name})
+            :| []
+    Nothing -> do
+      index <- gets nextVariableIndex
+      offset <- gets nextVariableOffset
+      nestingCtx <- gets nestingCtx
+
+      let var = Variable range index offset name nestingCtx
+      modify' $ \s ->
+        s {nextVariableIndex = index + 1, nextVariableOffset = offset + 8, knownVariables = insert name var vars}
+      pure $ Checked [] var
+
+-- | Retrieves a variable. If no variable with the specified name is defined, an error is returned.
 getVariable :: Range -> Text -> CheckerM Variable
-getVariable range name = undefined
+getVariable range name = do
+  vars <- gets knownVariables
+
+  case vars !? name of
+    Nothing ->
+      pure $
+        Failed $
+          (CheckIssue {range = range, severity = Error, msg = printf "Variable %s not defined." name}) :| []
+    Just var -> pure $ Checked [] var
 
 {- Check methods -}
 
@@ -137,12 +162,12 @@ checkAssignment :: UncheckedAssignment -> CheckerM Assignment
 checkAssignment (UExprAssignment r expr) = fmap (ExprAssignment r) <$> checkExpr expr
 checkAssignment (UBlockAssignment r stmts) = do
   -- Store variables state such that after this block is done, we can revert assignments of all local variables.
-  variablesTop <- gets variableOffsets
+  variablesTop <- gets vars
   checkedStmts <- mapM checkStatement stmts
   let stmtIssues = concatMap checkResultIssues checkedStmts
 
   -- Revert variables, but not next variable index, such that all still get a unique index.
-  modify' (\s -> s {variableOffsets = variablesTop})
+  modify' $ \s -> s {knownVariables = variablesTop}
 
   -- TODO: When types are introduced, all returns need to be of the same type.
   let lastStmtIssues = case tryLast stmts of
@@ -177,7 +202,7 @@ checkStatement (UAssignment r1 (UncheckedVariable r2 name) assmt) = do
 
   variable <- defineVariable r2 name
 
-  pure $ assignment >>= (\assmt -> variable <&> (\var -> Assignment r1 var assmt))
+  pure $ assignment >>= (\assmt -> variable >>= (\var -> Assignment r1 var assmt))
 checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
 
 -- | Checks a program.
@@ -223,7 +248,7 @@ checkProject (UncheckedProject projectType program) =
   initialContext =
     CheckerState
       { stringIndexes = Map.empty
-      , variableOffsets = Map.empty
+      , knownVariables = Map.empty
       , nextVariableIndex = Index 0
       , nextVariableOffset = Offset 0
       , nestingCtx = []
