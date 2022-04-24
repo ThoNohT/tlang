@@ -3,13 +3,13 @@ module Checker (checkProject, CheckResult (..), CheckSeverity (..), CheckIssue (
 import Console (Formattable (formatBare), color)
 import Control.Monad (foldM)
 import Control.Monad.Trans.State (State, evalState, get, gets, modify')
-import Core (tryHead, tryLast)
+import Core (tryHead, tryLast, nePrependList)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (foldl)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty as NE (fromList, head, prependList, tail, toList)
+import qualified Data.List.NonEmpty as NE (fromList, head, tail, toList)
 import Data.Map.Strict (Map, insert, (!?))
 import qualified Data.Map.Strict as Map (empty, insert, size)
 import Data.Maybe (mapMaybe)
@@ -59,14 +59,14 @@ instance Applicative CheckResult where
   af <*> aa = case af of
     Failed issues -> Failed issues
     Checked issues f -> case aa of
-      Failed issues' -> Failed $ NE.prependList issues issues'
+      Failed issues' -> Failed $ nePrependList issues issues'
       Checked issues' a -> Checked (issues <> issues') (f a)
 
 instance Monad CheckResult where
   ma >>= mf = case ma of
     Failed issues -> Failed issues
     Checked issues a -> case mf a of
-      Failed issues' -> Failed $ NE.prependList issues issues'
+      Failed issues' -> Failed $ nePrependList issues issues'
       Checked issues' a' -> Checked (issues <> issues') a'
 
 -- | All state information needed by a checker.

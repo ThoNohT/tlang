@@ -1,6 +1,6 @@
 packages:
 - .
 resolver:
-  compiler: ghc-9.2.1
+  compiler: ghc-8.10.7
 extra-deps:
 - monad-loops-0.4.3@sha256:ada4f1295ece07f9a7398bc5b40c4532f95a733a8604d2a2f57f05f878766df2,1751

@@ -1,9 +1,20 @@
-module Core (rightPad, leftPad, whileS, whileSE, whileS_, whileSE_, tryLast, tryHead) where
+module Core (rightPad, leftPad, whileS, whileSE, whileS_, whileSE_, tryLast, tryHead, nePrependList) where
 
 import Control.Monad.Loops (whileM, whileM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.State (StateT)
 import qualified Control.Monad.Trans.State.Lazy as ST
+import Data.Foldable (Foldable (toList))
+import Data.List.NonEmpty (NonEmpty ((:|)))
+
+{- | Attach a list at the beginning of a 'NonEmpty'.
+
+ Available from base-4.16, which is not yet compatible with the current stable ghc, so copied to here for now.
+-}
+nePrependList :: [a] -> NonEmpty a -> NonEmpty a
+nePrependList l ne = case l of
+  [] -> ne
+  (x : xs) -> x :| xs <> toList ne
 
 -- | Adds padding of the specified character at the end of the string, until it has at least the specified width.
 rightPad :: Char -> Int -> String -> String
