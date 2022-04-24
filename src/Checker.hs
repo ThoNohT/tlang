@@ -13,7 +13,7 @@ import qualified Data.List.NonEmpty as NE (fromList, head, prependList, tail, to
 import Data.Map.Strict (Map, insert, (!?))
 import qualified Data.Map.Strict as Map (empty, insert, size)
 import Data.Maybe (mapMaybe)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Lexer (Range, WithRange (getRange), rangeFromRanges)
 import Project
 import Text.Printf (printf)
@@ -122,7 +122,7 @@ defineVariable range name = do
     Just _ ->
       pure $
         Failed $
-          (CheckIssue {range = range, severity = Error, msg = printf "Variable %s already defined." name})
+          (CheckIssue {range = range, severity = Error, msg = pack $ printf "Variable %s already defined." name})
             :| []
     Nothing -> do
       index <- gets nextVariableIndex
@@ -132,7 +132,7 @@ defineVariable range name = do
       let var = Variable range index offset name nestingCtx
       modify' $ \s ->
         s {nextVariableIndex = index + 1, nextVariableOffset = offset + 8, knownVariables = insert name var vars}
-      pure $ Checked [] var
+      pure $ pure var
 
 -- | Retrieves a variable. If no variable with the specified name is defined, an error is returned.
 getVariable :: Range -> Text -> CheckerM Variable
@@ -143,14 +143,14 @@ getVariable range name = do
     Nothing ->
       pure $
         Failed $
-          (CheckIssue {range = range, severity = Error, msg = printf "Variable %s not defined." name}) :| []
-    Just var -> pure $ Checked [] var
+          (CheckIssue {range = range, severity = Error, msg = pack $ printf "Variable %s not defined." name}) :| []
+    Just var -> pure $ pure var
 
 {- Check methods -}
 
 -- | Checks an expression.
 checkExpr :: UncheckedExpression -> CheckerM Expression
-checkExpr (UIntLiteral r intVal) = pure $ Checked [] (IntLiteral r intVal)
+checkExpr (UIntLiteral r intVal) = pure $ pure (IntLiteral r intVal)
 checkExpr (UVarExpr r1 (UncheckedVariable r2 name)) = fmap (VarExpr r1) <$> getVariable r2 name
 checkExpr (UBinary r op exL exR) = do
   cExL <- checkExpr exL
@@ -162,7 +162,7 @@ checkAssignment :: UncheckedAssignment -> CheckerM Assignment
 checkAssignment (UExprAssignment r expr) = fmap (ExprAssignment r) <$> checkExpr expr
 checkAssignment (UBlockAssignment r stmts) = do
   -- Store variables state such that after this block is done, we can revert assignments of all local variables.
-  variablesTop <- gets vars
+  variablesTop <- gets knownVariables
   checkedStmts <- mapM checkStatement stmts
   let stmtIssues = concatMap checkResultIssues checkedStmts
 
@@ -191,7 +191,7 @@ checkAssignment (UBlockAssignment r stmts) = do
 checkStatement :: UncheckedStatement -> CheckerM Statement
 checkStatement (UPrintStr r1 (UncheckedStringLiteral r2 str)) = do
   idx <- getStringIndex str
-  pure $ Checked [] $ PrintStr r1 (StringLiteral r2 idx str)
+  pure $ pure $ PrintStr r1 (StringLiteral r2 idx str)
 checkStatement (UPrintExpr r1 expr) = fmap (PrintExpr r1) <$> checkExpr expr
 checkStatement (UAssignment r1 (UncheckedVariable r2 name) assmt) = do
   -- Check the assignment before the variable so the variable is not yet known during assignment evaluation.
@@ -202,7 +202,7 @@ checkStatement (UAssignment r1 (UncheckedVariable r2 name) assmt) = do
 
   variable <- defineVariable r2 name
 
-  pure $ assignment >>= (\assmt -> variable >>= (\var -> Assignment r1 var assmt))
+  pure $ assignment >>= (\assmt -> variable >>= (\var -> pure $ Assignment r1 var assmt))
 checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
 
 -- | Checks a program.

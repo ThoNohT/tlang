@@ -18,19 +18,19 @@ leftPad padChar width input = replicate toPad ' ' ++ input
   toPad = max 0 $ width - length input
 
 -- | whileM with the first argument applied to the state.
-whileS :: Monad m => (a -> Bool) -> StateT a m c -> StateT a m [c]
+whileS :: Monad m => (s -> Bool) -> StateT s m a -> StateT s m [a]
 whileS a = whileM (a <$> ST.get)
 
 -- | whileM with the first argument applied to the state, and lifted.
-whileSE :: MonadTrans t => Monad (t (StateT a m)) => Monad m => (a -> Bool) -> t (StateT a m) c -> t (StateT a m) [c]
+whileSE :: MonadTrans t => Monad (t (StateT s m)) => Monad m => (s -> Bool) -> t (StateT s m) a -> t (StateT s m) [a]
 whileSE a = whileM (lift $ a <$> ST.get)
 
 -- | whileM_ with the first argument applied to the state.
-whileS_ :: Monad m => (a -> Bool) -> StateT a m a -> StateT a m ()
+whileS_ :: Monad m => (s -> Bool) -> StateT s m a -> StateT s m ()
 whileS_ a = whileM_ (a <$> ST.get)
 
 -- | whileM_ with the first argument applied to the state, and lifted.
-whileSE_ :: MonadTrans t => Monad (t (StateT a m)) => Monad m => (a -> Bool) -> t (StateT a m) c -> t (StateT a m) ()
+whileSE_ :: MonadTrans t => Monad (t (StateT s m)) => Monad m => (s -> Bool) -> t (StateT s m) a -> t (StateT s m) ()
 whileSE_ a = whileM_ (lift $ a <$> ST.get)
 
 -- | Attempts to get the head of a list. Returns Nothing otherwise.

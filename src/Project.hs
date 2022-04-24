@@ -11,11 +11,12 @@ import Text.Printf (printf)
 
 {- Project -}
 
+
 -- | An index in a list.
-newtype Index = Index Int deriving (Show)
+newtype Index = Index Int deriving (Show, Num)
 
 -- | An offset in memory.
-newtype Offset = Offset Int deriving (Show)
+newtype Offset = Offset Int deriving (Show, Num)
 
 -- | A string literal, including its index among all string literals.
 data StringLiteral = StringLiteral {range :: Range, index :: Index, string :: Text}
