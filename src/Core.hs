@@ -2,6 +2,7 @@ module Core (rightPad, leftPad, whileS, whileSE, whileS_, whileSE_, tryLast, try
 
 import Control.Monad.Loops (whileM, whileM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.Trans.State (StateT)
 import qualified Control.Monad.Trans.State.Lazy as ST
 
 -- | Adds padding of the specified character at the end of the string, until it has at least the specified width.
@@ -17,22 +18,28 @@ leftPad padChar width input = replicate toPad ' ' ++ input
   toPad = max 0 $ width - length input
 
 -- | whileM with the first argument applied to the state.
+whileS :: Monad m => (a -> Bool) -> StateT a m c -> StateT a m [c]
 whileS a = whileM (a <$> ST.get)
 
 -- | whileM with the first argument applied to the state, and lifted.
+whileSE :: MonadTrans t => Monad (t (StateT a m)) => Monad m => (a -> Bool) -> t (StateT a m) c -> t (StateT a m) [c]
 whileSE a = whileM (lift $ a <$> ST.get)
 
 -- | whileM_ with the first argument applied to the state.
+whileS_ :: Monad m => (a -> Bool) -> StateT a m a -> StateT a m ()
 whileS_ a = whileM_ (a <$> ST.get)
 
 -- | whileM_ with the first argument applied to the state, and lifted.
+whileSE_ :: MonadTrans t => Monad (t (StateT a m)) => Monad m => (a -> Bool) -> t (StateT a m) c -> t (StateT a m) ()
 whileSE_ a = whileM_ (lift $ a <$> ST.get)
 
 -- | Attempts to get the head of a list. Returns Nothing otherwise.
+tryHead :: [a] -> Maybe a
 tryHead [] = Nothing
 tryHead (x : _) = Just x
 
 -- | Attempts to get the last element of a list. Returns Nothing otherwise.
+tryLast :: [a] -> Maybe a
 tryLast [] = Nothing
 tryLast [a] = Just a
 tryLast (_ : as) = tryLast as
