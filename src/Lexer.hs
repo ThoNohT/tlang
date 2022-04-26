@@ -89,10 +89,6 @@ rangeFromRanges startRange endRange =
 -- | getRange for all types that don't have a range field.
 class WithRange a where getRange :: a -> Range
 
--- -- Gets the range from any type that has a range field of type Range.
--- getRange :: HasField "range" r Range => r -> Range
--- getRange = getField @"range"
-
 instance HasField "range" r Range => WithRange r where
   getRange = getField @"range"
 
