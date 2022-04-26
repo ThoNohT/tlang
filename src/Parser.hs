@@ -223,6 +223,11 @@ projectTypeParser = do
    token is consumed.
 -}
 indentParserM :: Natural -> Parser' ()
+indentParserM 0 = do
+  cur <- gets (tData . curTkn)
+  case cur of
+    IndentationToken _ -> empty
+    _ -> pure ()
 indentParserM indent = do
   tryConsumeExact (IndentationToken indent)
   t <- gets (tData . curTkn)
