@@ -32,6 +32,7 @@ executable tlang
       Lexer
       Parser
       Project
+      StrFmt
       Paths_tlang
   hs-source-dirs:
       src

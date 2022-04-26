@@ -16,7 +16,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map (fromList, lookup, toList)
 import Data.Set (Set)
 import qualified Data.Set as Set (empty, insert, member)
-import Text.Printf (printf)
+import StrFmt
 
 -- | A flag that can be used to define custom behavior for a command.
 class Ord a => CompilerFlag a where
@@ -51,7 +51,7 @@ accumulate = foldl checkArg (Right Set.empty)
 showFlags :: CompilerFlag a => Map String a -> String
 showFlags = unlines . fmap printFlag . Map.toList
  where
-  printFlag (k, v) = printf "        %s %s" (rightPad ' ' 14 k) (explain v)
+  printFlag (k, v) = sfmt ("        " % str % " " % str) (rightPad ' ' 14 k) (explain v)
 
 -- | A compiler flag for the build command.
 data BuildFlag

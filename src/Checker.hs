@@ -3,7 +3,7 @@ module Checker (checkProject, CheckResult (..), CheckSeverity (..), CheckIssue (
 import Console (Formattable (formatBare), color)
 import Control.Monad (foldM)
 import Control.Monad.Trans.State (State, evalState, get, gets, modify')
-import Core (tryHead, tryLast, nePrependList)
+import Core (nePrependList, tryHead, tryLast)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (foldl)
 import Data.Function ((&))
@@ -13,10 +13,10 @@ import qualified Data.List.NonEmpty as NE (fromList, head, tail, toList)
 import Data.Map.Strict (Map, insert, (!?))
 import qualified Data.Map.Strict as Map (empty, insert, size)
 import Data.Maybe (mapMaybe)
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, unpack)
 import Lexer (Range, WithRange (getRange), rangeFromRanges)
 import Project
-import Text.Printf (printf)
+import StrFmt
 
 -- | The different severities for a check issue. An Error prevents compilation.
 data CheckSeverity = Error | Warning deriving (Eq)
@@ -30,7 +30,7 @@ data CheckIssue = CheckIssue {range :: Range, severity :: CheckSeverity, msg :: 
 
 instance Formattable CheckIssue where
   formatBare uc CheckIssue {range, severity, msg} =
-    printf "%s: %s: %s" (formatBare uc range) (formatBare uc severity) msg
+    sfmt (str % ": " % str % ": " % txt) (formatBare uc range) (formatBare uc severity) msg
 
 -- | The result of a check. Even a successful check result can have issues.
 data CheckResult a = Checked [CheckIssue] a | Failed (NonEmpty CheckIssue)
@@ -94,7 +94,7 @@ type CheckerM' a = State CheckerState a
 
 -- | Pushes a new variable on the nesting context.
 pushNestingCtx :: Text -> CheckerM' ()
-pushNestingCtx name = modify' $ \s -> s {nestingCtx = name : (nestingCtx s)}
+pushNestingCtx name = modify' $ \s -> s {nestingCtx = name : nestingCtx s}
 
 -- | Pops the last variable from the nesting contex.
 popNestingCtx :: CheckerM' ()
@@ -109,7 +109,7 @@ getStringIndex str = do
   case stringIndexes' !? str of
     Just idx -> pure idx
     Nothing -> do
-      let idx = Index $ Map.size $ stringIndexes'
+      let idx = Index $ Map.size stringIndexes'
       modify' $ \s -> s {stringIndexes = Map.insert str idx stringIndexes'}
       pure idx
 
@@ -122,7 +122,7 @@ defineVariable range name = do
     Just _ ->
       pure $
         Failed $
-          (CheckIssue {range = range, severity = Error, msg = pack $ printf "Variable %s already defined." name})
+          (CheckIssue {range = range, severity = Error, msg = tfmt ("Variable " % txt % " already defined.") name})
             :| []
     Nothing -> do
       index <- gets nextVariableIndex
@@ -143,7 +143,7 @@ getVariable range name = do
     Nothing ->
       pure $
         Failed $
-          (CheckIssue {range = range, severity = Error, msg = pack $ printf "Variable %s not defined." name}) :| []
+          (CheckIssue {range = range, severity = Error, msg = tfmt ("Variable " % txt % " not defined.") name}) :| []
     Just var -> pure $ pure var
 
 {- Check methods -}

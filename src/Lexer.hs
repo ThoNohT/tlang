@@ -38,7 +38,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Records (HasField (getField))
 import Numeric.Natural (Natural)
-import Text.Printf (printf)
+import StrFmt
 import Text.Read (readMaybe)
 
 -- | For this lexer, we need to often match against whitespace characters that are not the newline character.
@@ -48,11 +48,11 @@ isWhitespace c = Char.isSpace c && c /= '\n'
 data Position = Position {line :: Int, col :: Int}
 
 instance Formattable Position where
-  formatBare _ Position {line, col} = printf "%i:%i" (line + 1) (col + 1)
+  formatBare _ Position {line, col} = sfmt (int % ":" % int) (line + 1) (col + 1)
 
 -- | Converts a position to a string including the specified filename.
 posToFileText :: FilePath -> Position -> Text
-posToFileText filename Position {line, col} = T.pack $ printf "%s:%i:%i" filename line col
+posToFileText filename Position {line, col} = tfmt (str % ":" % int % ":" % int) filename line col
 
 -- | Initial position.
 zeroPos :: Position
@@ -75,7 +75,7 @@ rangeToFileText Range {file, startPos} = posToFileText file startPos
 
 instance Formattable Range where
   formatBare uc Range {file, startPos, endPos} =
-    color uc 32 $ printf "[%s:%s->%s]" file (formatBare uc startPos) (formatBare uc endPos)
+    color uc 32 $ sfmt ("[" % str % ":" % str % "->" % str % "]") file (formatBare uc startPos) (formatBare uc endPos)
 
 -- | Creates a range from two positions and a filename.
 rangeFromPositions filename startPos endPos =
@@ -116,7 +116,7 @@ ignoreToken (CommentToken _) = True
 ignoreToken _ = False
 
 instance Formattable TokenData where
-  formatBare uc td = uncurry (printf "%s%s") $ bimap (bold uc) (color uc 35) tuple
+  formatBare uc td = uncurry (sfmt (str % str)) $ bimap (bold uc) (color uc 35) tuple
    where
     tuple =
       case td of
@@ -169,7 +169,7 @@ data Token = Token
 
 instance Formattable Token where
   formatBare uc Token {range, tData, whitespaceBefore} =
-    printf "%s %s, whitespaceBefore: %s" (formatBare uc range) (formatBare uc tData) (color uc 35 $ show whitespaceBefore)
+    sfmt (str % " " % str % ", whitespaceBefore: " % str) (formatBare uc range) (formatBare uc tData) (color uc 35 $ show whitespaceBefore)
 
 -- | Converts a token to a string representing the token's position including the filename.
 tokenToFileText :: Token -> Text
@@ -286,21 +286,21 @@ checkLexerPredicate pred msg = do
   s <- lift ST.get
   if pred s
     then pure ()
-    else throwE $ T.pack $ printf "%s: Lexer error: %s" (posToFileText (filename s) (pos s)) msg
+    else throwE $ tfmt (txt % ": Lexer error: " % txt) (posToFileText (filename s) (pos s)) msg
 
 -- | Can be used to check a predicate, and if it fails, raise an exception, including some location data.
 checkLexerPredicate' :: Bool -> Text -> LexerM ()
 checkLexerPredicate' True msg = pure ()
 checkLexerPredicate' False msg = do
   s <- lift ST.get
-  throwE $ T.pack $ printf "%s: Lexer error: %s" (posToFileText (filename s) (pos s)) msg
+  throwE $ tfmt (txt % ": Lexer error: " % txt) (posToFileText (filename s) (pos s)) msg
 
 -- | Can be used to check that a Maybe is Just, and if it fails, raise an exception, including some location data.
 lexerAssertJust :: Maybe a -> Text -> LexerM a
 lexerAssertJust (Just val) msg = pure val
 lexerAssertJust Nothing msg = do
   s <- lift ST.get
-  throwE $ T.pack $ printf "%s: Lexer error: %s" (posToFileText (filename s) (pos s)) msg
+  throwE $ tfmt (txt % ": Lexer error: " % txt) (posToFileText (filename s) (pos s)) msg
 
 {- | Lexes an indentation token, consisting of spaces at the sart of a line.
    Only allows spaces as indentation. The lexer will fail when it encounters any other whitespace character,
@@ -334,9 +334,10 @@ lexIndent = do
           )
       let nSpaces = List.genericLength spaces
       let sOffset = nSpaces `rem` spi'
-      let prefix = T.pack "Invalid number of leading spaces. Expected a multiple of"
+      let prefix = "Invalid number of leading spaces. Expected a multiple of"
+      let fmt = str % " " % nat % ", but got " % nat % ", which is " % nat % " too many or " % nat % " too few."
       checkLexerPredicate' (sOffset == 0) $
-        T.pack $ printf "%s %i, but got %i, which %i too many or %i too few." prefix spi' nSpaces sOffset (spi' - sOffset)
+        tfmt fmt prefix spi' nSpaces sOffset (spi' - sOffset)
       lift $ ST.modify $ addToken $ IndentationToken (nSpaces `div` spi')
 
 -- | Lexes a number, simply a token with a value as long as the characters are numeric.
@@ -402,7 +403,7 @@ lexStringLiteral = do
   assertNotAtEnd subject =
     checkLexerPredicate
       (not . atEndOfInput)
-      $ T.pack $ printf "Input ended before %sstring literal ended." (T.unpack subject)
+      $ tfmt ("Input ended before " % txt % "string literal ended.") subject
 
 -- | Lexes a symbol, or any other token that can be started by regular symbol characters.
 lexSymbol :: LexerM ()

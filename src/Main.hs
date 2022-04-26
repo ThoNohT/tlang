@@ -12,9 +12,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Lexer (lexFile)
 import qualified Parser as P
+import StrFmt
 import System.Environment (getArgs, getProgName)
 import System.Exit (exitFailure, exitSuccess)
-import Text.Printf (printf)
 
 -- | All keywords in the language.
 keywords :: Set Text
@@ -98,5 +98,5 @@ main = do
       cleanup target flags
 
     -- Any other command is invalid.
-    _ -> Console.exitWithUsageError compilerName $ printf "Invalid command '%s'." cmd
+    _ -> Console.exitWithUsageError compilerName $ sfmt ("Invalid command '" % str % "'.") cmd
   exitSuccess

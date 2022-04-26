@@ -1,5 +1,3 @@
-{-# LANGUAGE NoOverloadedStrings #-}
-
 module Console (
   color,
   bold,
@@ -30,17 +28,17 @@ import Data.Set (Set)
 import qualified Data.Set as Set (empty, insert, member)
 import GHC.IO.Exception (ExitCode (ExitSuccess))
 import GHC.IO.Handle.FD (stderr)
+import StrFmt
 import System.Exit (ExitCode (ExitFailure), exitFailure)
 import System.IO (hPutStrLn)
 import System.Process (readProcessWithExitCode, showCommandForUser)
-import Text.Printf (printf)
 
 {- | Applies a color coding around the specified string.
    https://chrisyeh96.github.io/2020/03/28/terminal-colors.html
 -}
 color :: Bool -> Int -> String -> String
 color False _ elem = elem
-color True nr elem = printf "%s%i%s%s%s" "\x1b[" nr "m" elem "\x1b[0m"
+color True nr elem = sfmt ("\x1b[" % int % "m" % str % "\x1b[0m") nr elem
 
 -- | Makes specified string bold.
 bold = flip color 1
@@ -61,7 +59,7 @@ format useColor indent = List.intercalate "\n" . fmap indentLine . lines . forma
  where
   indentLine l =
     if indent > 0
-      then printf " %s%s" (faint useColor $ color useColor 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
+      then sfmt (" " % str % str) (faint useColor $ color useColor 36 ".") $ replicate (indent * 4 - 2) ' ' ++ l
       else l
 
 instance (Foldable t, Functor t, Formattable a) => Formattable (t a) where
@@ -75,12 +73,16 @@ ePutStrLn = hPutStrLn stderr
 -}
 getFlagsOrExit :: CompilerFlag a => String -> Either [String] (Set a) -> IO (Set a)
 getFlagsOrExit compilerName = \case
-  Left invalidFlags -> exitWithUsageError compilerName $ printf "Invalid flags: %s" (List.intercalate ", " invalidFlags)
+  Left invalidFlags ->
+    exitWithUsageError compilerName $
+      sfmt
+        ("Invalid flags: " % str)
+        (List.intercalate ", " invalidFlags)
   Right flags -> pure flags
 
 -- | Print the usage string.
 printUsage compilerName = do
-  putStrLn $ printf "Usage: %s <COMMAND> [OPTIONS]" compilerName
+  putStrLn $ sfmt ("Usage: " % str % " <COMMAND> [OPTIONS]") compilerName
   putStrLn "  COMMAND:"
   putStrLn "    build <file>     Build the project specified in the specified file."
   putStrLn "      OPTIONS:"
@@ -137,11 +139,11 @@ exitWithUsageError compilerName error = do
 runCmdEchoed :: FilePath -> [String] -> Bool -> IO ()
 runCmdEchoed path args echoStdOut = do
   let showCmd = showCommandForUser path args
-  putStrLn $ printf "[CMD] %s" showCmd
+  putStrLn $ sfmt ("[CMD] " % str) showCmd
   (exitCode, stdout, stderr) <- readProcessWithExitCode path args ""
   if echoStdOut then putStrLn stdout else pure ()
   case exitCode of
     ExitFailure code -> do
       ePutStrLn stderr
-      exitWithError $ printf "Command exited with status %i." code
+      exitWithError $ sfmt ("Command exited with status " % int % ".") code
     ExitSuccess -> pure ()

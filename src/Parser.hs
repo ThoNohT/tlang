@@ -25,7 +25,7 @@ import Lexer (
  )
 import Numeric.Natural (Natural)
 import Project
-import Text.Printf (printf)
+import StrFmt
 
 {- ParserState -}
 
@@ -145,7 +145,14 @@ consumeExact toConsume label = do
   uc <- gets uc
   if tData tkn == toConsume
     then pure $ tData tkn
-    else pfail $ printf "%s: Parsing %s failed, expected %s, but got %s." (tft tkn) label (fb uc toConsume) (fb uc $ tData tkn)
+    else
+      pfail $
+        sfmt
+          (txt % ": Parsing " % str % " failed, expected " % str % ", but got " % str % ".")
+          (tft tkn)
+          label
+          (fb uc toConsume)
+          (fb uc $ tData tkn)
 
 -- | A parser that succeeds if the mapping on the consumed token returns Just, and fails otherwise.
 consumeJust :: (TokenData -> Maybe a) -> String -> Parser' a
@@ -158,7 +165,13 @@ consumeJust' f label = do
   tkn <- pToken
   case f $ tData tkn of
     Just a -> pure (a, getRange tkn)
-    Nothing -> pfail $ printf "%s: Parsing %s failed, unexpected %s." (tft tkn) label (fb uc $ tData tkn)
+    Nothing ->
+      pfail $
+        sfmt
+          (txt % ": Parsing " % str % " failed, unexpected " % str % ".")
+          (tft tkn)
+          label
+          (fb uc $ tData tkn)
 
 -- | A parser that succeeds if the check on the consumed token returns True, and fails otherwise.
 consumeIf :: (TokenData -> Bool) -> String -> Parser' ()
@@ -186,7 +199,7 @@ tryConsumeIf f = tryConsumeJust (\x -> if f x then Just () else Nothing)
 
 -- | A parser that parses exactly one end of line token and fails otherwise.
 eolParser :: String -> Parser' ()
-eolParser label = consumeIf isEol $ printf "%s end of line" label
+eolParser label = consumeIf isEol $ sfmt (str % " end of line") label
 
 {- Parsers for domain types -}
 
@@ -316,8 +329,8 @@ printStmtParserM = do
     (_, Just e) -> pure (UPrintExpr range e, True)
     _ ->
       pfail $
-        printf
-          "%s: Error parsing a print statement, expected a string literal or expression, but got %s."
+        sfmt
+          (txt % ": Error parsing a print statement, expected a string literal or expression, but got " % str % ".")
           (tft nextToken)
           (fb uc nextToken)
 
@@ -334,7 +347,7 @@ assignmentStmtParserM indent = do
   assmtRange <- gets (getRange . curTkn)
   end <- gets (getRange . prevTkn)
 
-  (assmt, eols) <- assignmentParserM indent <|> pfail (printf "%s: Error parsing an assignment." (rft assmtRange))
+  (assmt, eols) <- assignmentParserM indent <|> pfail (sfmt (txt % ": Error parsing an assignment.") (rft assmtRange))
 
   pure
     ( UAssignment
@@ -351,7 +364,7 @@ returnStmtParserM :: Parser' (UncheckedStatement, Bool)
 returnStmtParserM = do
   start <- gets (getRange . curTkn)
   tryConsumeExact (KeywordToken "return")
-  expr <- expressionParserM <|> pfail (printf "%s: Error parsing a return expression" (rft start))
+  expr <- expressionParserM <|> pfail (sfmt (txt % ": Error parsing a return expression") (rft start))
 
   end <- gets (getRange . prevTkn)
   pure (UReturn (rangeFromRanges start end) expr, True)
