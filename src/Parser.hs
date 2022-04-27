@@ -241,12 +241,7 @@ indentParserM 0 = do
   case cur of
     IndentationToken _ -> empty
     _ -> pure ()
-indentParserM indent = do
-  tryConsumeExact (IndentationToken indent)
-  t <- gets (tData . curTkn)
-  case t of
-    IndentationToken _ -> empty
-    _ -> pure ()
+indentParserM indent = tryConsumeExact (IndentationToken indent)
 
 {- | A parser  for an assignment, which can be either directly an expression, or a block of statements.
    Will return Ignore if parsing the expression failed, or the block start was not matched (end of line).
