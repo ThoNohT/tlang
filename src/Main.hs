@@ -1,9 +1,18 @@
 module Main where
 
-import qualified Checker as C
+import qualified Checker as Ch
+import qualified Compiler as C
 import CompilerFlag (BuildFlag (..), CleanFlag (..))
 import qualified CompilerFlag (accumulate, isActive)
-import qualified Console (assertJustWithUsageError, assertRight, ePutStrLn, exitWithUsageError, formatBare, getFlagsOrExit, runCmdEchoed)
+import qualified Console (
+  assertJustWithUsageError,
+  assertRight,
+  ePutStrLn,
+  exitWithUsageError,
+  formatBare,
+  getFlagsOrExit,
+  runCmdEchoed,
+ )
 import Data.Bifunctor (Bifunctor (first, second))
 import qualified Data.List as List (uncons)
 import Data.Set (Set)
@@ -12,7 +21,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Lexer (lexFile)
 import qualified Parser as P
+import Project (Project (Project), ProjectType (..), UncheckedProject (UncheckedProject))
 import StrFmt
+import System.Directory (doesFileExist, removeFile)
 import System.Environment (getArgs, getProgName)
 import System.Exit (exitFailure, exitSuccess)
 
@@ -29,7 +40,7 @@ compile fileName flags = do
   -- Run lexer.
   tokens <- Console.assertRight $ first T.unpack $ lexFile keywords fileName $ T.pack input
 
-  let useColor = not $ CompilerFlag.isActive NoColor flags
+  let useColor = not $ CompilerFlag.isActive NoColorBuild flags
 
   if CompilerFlag.isActive DumpLexerTokens flags
     then do
@@ -47,12 +58,12 @@ compile fileName flags = do
     else pure ()
 
   -- Run checker.
-  case C.checkProject uncheckedProject of
-    C.Failed issues -> do
+  case Ch.checkProject uncheckedProject of
+    Ch.Failed issues -> do
       Console.ePutStrLn "Issues found:\n"
       Console.ePutStrLn $ Console.formatBare useColor issues
       exitFailure
-    C.Checked issues project -> do
+    Ch.Checked issues (Project project@Executable {name = projectName} program) -> do
       if not $ null issues
         then do
           putStrLn "Issues found:\n"
@@ -65,12 +76,64 @@ compile fileName flags = do
           exitSuccess
         else pure ()
 
-      -- TODO: Run compiler.
-      undefined
+      let asmFile :: FilePath = sfmt (txt % ".asm") projectName
+      let oFile :: FilePath = sfmt (txt % ".o") projectName
+      let exeFile :: FilePath = sfmt txt projectName
+
+      putStrLn $ sfmt ("Generating " % str) asmFile
+      C.writeX86_64_LinuxAsm asmFile program flags
+
+      if CompilerFlag.isActive UseNasm flags
+        then do
+          -- Compile nasm.
+          Console.runCmdEchoed "nasm" ["-f", "elf64", "-o", oFile, asmFile] True
+          -- Link file.
+          Console.runCmdEchoed "ld" [oFile, "-o", exeFile] True
+        else do
+          -- Compile fasm
+          Console.runCmdEchoed "fasm" ["-m", "524288", asmFile, exeFile] True
+
+      pure exeFile
 
 -- | Cleans up the intermediary files created while compiling the program.
 cleanup :: FilePath -> Set CleanFlag -> IO ()
-cleanup = undefined
+cleanup fileName flags = do
+  -- Read file.
+  input <- readFile fileName
+
+  -- Run lexer.
+  tokens <- Console.assertRight $ first T.unpack $ lexFile keywords fileName $ T.pack input
+
+  -- Run parser.
+  let useColor = not $ CompilerFlag.isActive NoColorClean flags
+  UncheckedProject Executable {name = projectName} _ <- Console.assertRight $ P.run P.projectParser useColor tokens
+
+  -- Run cleanup.
+  putStrLn $ sfmt ("Cleaning up files for " % txt) projectName
+
+  let asmFile :: FilePath = sfmt (txt % ".asm") projectName
+  asmFileExists <- doesFileExist asmFile
+  if asmFileExists
+    then do
+      putStrLn $ sfmt ("Removing " % str) asmFile
+      removeFile asmFile
+    else pure ()
+
+  let oFile :: FilePath = sfmt (txt % ".o") projectName
+  oFileExists <- doesFileExist oFile
+  if oFileExists
+    then do
+      putStrLn $ sfmt ("Removing " % str) oFile
+      removeFile oFile
+    else pure ()
+
+  let exeFile :: FilePath = sfmt txt projectName
+  exeFileExists <- doesFileExist exeFile
+  if exeFileExists && CompilerFlag.isActive IncludeExecutable flags
+    then do
+      putStrLn $ sfmt ("Removing " % str) exeFile
+      removeFile exeFile
+    else pure ()
 
 main :: IO ()
 main = do

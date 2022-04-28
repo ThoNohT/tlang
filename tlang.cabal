@@ -26,6 +26,7 @@ executable tlang
   main-is: Main.hs
   other-modules:
       Checker
+      Compiler
       CompilerFlag
       Console
       Core
@@ -68,6 +69,7 @@ executable tlang
   build-depends:
       base >=4.13.3 && <5
     , containers
+    , directory
     , monad-loops
     , process
     , text

@@ -61,7 +61,7 @@ data BuildFlag
   | DumpCheckedSyntaxTree
   | PrettyPrintAsm
   | UseNasm
-  | NoColor
+  | NoColorBuild
   deriving (Eq, Ord)
 
 instance CompilerFlag BuildFlag where
@@ -73,7 +73,7 @@ instance CompilerFlag BuildFlag where
       , ("-dtc", DumpCheckedSyntaxTree)
       , ("-app", PrettyPrintAsm)
       , ("-nasm", UseNasm)
-      , ("-nc", NoColor)
+      , ("-nc", NoColorBuild)
       ]
   explain = \case
     Run -> "Run the program after compiling it."
@@ -82,12 +82,13 @@ instance CompilerFlag BuildFlag where
     DumpCheckedSyntaxTree -> "Dump the checked syntax tree produced by the checker and exit."
     PrettyPrintAsm -> "Pretty print assembly code, including comments and indentation."
     UseNasm -> "Use nasm rather than fasm for compiling."
-    NoColor -> "Don't use color when outputting data on the console."
+    NoColorBuild -> "Don't use color when outputting data on the console."
 
 -- | A compiler flag for the clean command.
-data CleanFlag = IncludeExecutable deriving (Eq, Ord)
+data CleanFlag = IncludeExecutable | NoColorClean deriving (Eq, Ord)
 
 instance CompilerFlag CleanFlag where
-  allFlags = Map.fromList [("-e", IncludeExecutable)]
+  allFlags = Map.fromList [("-e", IncludeExecutable), ("-nc", NoColorClean)]
   explain = \case
     IncludeExecutable -> "Also cleanup the compiled executable."
+    NoColorClean -> "Don't use color when outputting data on the console."
