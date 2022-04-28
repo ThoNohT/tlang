@@ -71,6 +71,7 @@ executable tlang
     , containers
     , directory
     , monad-loops
+    , mtl
     , process
     , text
     , transformers

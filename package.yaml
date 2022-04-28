@@ -64,3 +64,4 @@ executables:
     - monad-loops
     - text
     - directory
+    - mtl
