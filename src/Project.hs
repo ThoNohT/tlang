@@ -1,13 +1,17 @@
 module Project where
 
 import Console (Formattable (formatBare), bold, color, format)
-import qualified Data.List as List
+import Data.List qualified as List
 import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map qualified as Map
 import Data.Text (Text)
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Lexer (Range, getRange)
 import StrFmt
+
+{- Assignment extraction -}
+class GetAssignments a where
+  getAssignments :: a -> [(Variable, Assignment)]
 
 {- Project -}
 
@@ -73,6 +77,10 @@ instance Formattable Assignment where
   formatBare uc (BlockAssignment range stmts) =
     sfmt (str % " " % str % "\n" % str) (formatBare uc range) (bold uc "BlockAssignment") (List.intercalate "\n" $ map (format uc 1) stmts)
 
+instance GetAssignments Assignment where
+  getAssignments (BlockAssignment {stmts}) = concat $ getAssignments <$> stmts
+  getAssignments _ = []
+
 -- | A single statement.
 data Statement
   = PrintStr {range :: Range, string :: StringLiteral}
@@ -86,6 +94,10 @@ instance Formattable Statement where
   formatBare uc (Assignment range var assmt) =
     sfmt (str % " " % str % "\n" % str % "\n" % str) (formatBare uc range) (bold uc "Assignment") (format uc 1 var) (format uc 1 assmt)
   formatBare uc (Return range expr) = sfmt (str % " " % str % "\n" % str) (formatBare uc range) (bold uc "Return") (format uc 1 expr)
+
+instance GetAssignments Statement where
+  getAssignments (Assignment {var, assmt}) = (var, assmt) : getAssignments assmt
+  getAssignments _ = []
 
 -- | A program, containing all statements and additional information about memory layout.
 data Program = Program
@@ -106,6 +118,9 @@ instance Formattable Program where
       (color uc 35 $ show $ Map.size strings)
       (color uc 35 $ show vs)
       (color uc 35 $ show vc)
+
+instance GetAssignments Program where
+  getAssignments (Program {stmts}) = concat $ getAssignments <$> stmts
 
 -- | Type information about a project, including its name.
 data ProjectType = Executable {range :: Range, name :: Text}
