@@ -57,7 +57,7 @@ flatten pp (D i l) = if pp then indent i l else Nothing
 flatten pp BL = if pp then Just "" else Nothing
 flatten _ (If False _) = Nothing
 flatten pp (If True ls) = combineLines pp ls
-flatten pp (IfElse cond f t) = combineLines pp $ if cond then t else f
+flatten pp (IfElse cond t f) = combineLines pp $ if cond then t else f
 flatten pp (S ls) = combineLines pp ls
 
 writeX86_64_LinuxAsm :: FilePath -> Program -> Set BuildFlag -> IO ()
@@ -65,7 +65,7 @@ writeX86_64_LinuxAsm file program flags = writeFile file $ compile flags program
 
 -- | Creates a string that is compatible with assembly.
 asmEncodeString :: T.Text -> String
-asmEncodeString txt = if inStr then sfmt (str % "\\") res else res
+asmEncodeString txt = if inStr then sfmt (str % "\"") res else res
  where
   (_, inStr, res) = foldl f (True, False, "") $ T.unpack txt
   f (first, prevInStr, acc) c =
@@ -73,7 +73,7 @@ asmEncodeString txt = if inStr then sfmt (str % "\\") res else res
         onSeparator = not first && (not nowInStr || (nowInStr && not prevInStr))
         prefix :: String = if onSeparator then "," else ""
         startQuote :: String = if not prevInStr && nowInStr then "\"" else ""
-        endQuote :: String = if prevInStr && not nowInStr then "\\" else ""
+        endQuote :: String = if prevInStr && not nowInStr then "\"" else ""
         c_ :: String = if nowInStr then [c] else sfmt (" " % int) (ord c)
      in (False, nowInStr, sfmt (str % str % str % str % str) acc endQuote prefix startQuote c_)
 

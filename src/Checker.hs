@@ -208,7 +208,7 @@ checkStatement (UReturn r expr) = fmap (Return r) <$> checkExpr expr
 -- | Checks a program.
 checkProgram :: UncheckedProgram -> CheckerM Program
 checkProgram (UncheckedProgram r stmts) = do
-  checkedStmts <- reverse <$> mapM checkStatement stmts
+  checkedStmts <- mapM checkStatement stmts
   let stmtIssues = concatMap checkResultIssues checkedStmts
 
   let lastStmtIssues = case tryLast stmts of

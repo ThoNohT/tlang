@@ -21,16 +21,16 @@ module Console (
 import CompilerFlag (BuildFlag, CleanFlag, CompilerFlag, allFlags, showFlags)
 import Core (rightPad)
 import Data.Foldable (Foldable (toList))
-import qualified Data.List as List (intercalate)
+import Data.List qualified as List (intercalate)
 import Data.Map (Map)
-import qualified Data.Map as Map (fromList, lookup, toList)
+import Data.Map qualified as Map (fromList, lookup, toList)
 import Data.Set (Set)
-import qualified Data.Set as Set (empty, insert, member)
+import Data.Set qualified as Set (empty, insert, member)
 import GHC.IO.Exception (ExitCode (ExitSuccess))
 import GHC.IO.Handle.FD (stderr)
 import StrFmt
 import System.Exit (ExitCode (ExitFailure), exitFailure)
-import System.IO (hPutStrLn)
+import System.IO (hPutStr, hPutStrLn)
 import System.Process (readProcessWithExitCode, showCommandForUser)
 
 {- | Applies a color coding around the specified string.
@@ -67,6 +67,8 @@ instance (Foldable t, Functor t, Formattable a) => Formattable (t a) where
 
 -- | Print the specified text to stderr.
 ePutStrLn = hPutStrLn stderr
+
+ePutStr = hPutStr stderr
 
 {- | Gets the set of flags from an Either that contains the flags or the list of invalid flags.
    If there are invalid flags, an error message is printed to stderr and the program exits.
@@ -141,9 +143,9 @@ runCmdEchoed path args echoStdOut = do
   let showCmd = showCommandForUser path args
   putStrLn $ sfmt ("[CMD] " % str) showCmd
   (exitCode, stdout, stderr) <- readProcessWithExitCode path args ""
-  if echoStdOut then putStrLn stdout else pure ()
+  if echoStdOut then putStr stdout else pure ()
   case exitCode of
     ExitFailure code -> do
-      ePutStrLn stderr
+      ePutStr stderr
       exitWithError $ sfmt ("Command exited with status " % int % ".") code
     ExitSuccess -> pure ()

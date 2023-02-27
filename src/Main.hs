@@ -63,7 +63,7 @@ compile fileName flags = do
       Console.ePutStrLn "Issues found:\n"
       Console.ePutStrLn $ Console.formatBare useColor issues
       exitFailure
-    Ch.Checked issues (Project project@Executable {name = projectName} program) -> do
+    Ch.Checked issues project@(Project Executable {name = projectName} program) -> do
       if not $ null issues
         then do
           putStrLn "Issues found:\n"
@@ -76,9 +76,9 @@ compile fileName flags = do
           exitSuccess
         else pure ()
 
-      let asmFile :: FilePath = sfmt (txt % ".asm") projectName
-      let oFile :: FilePath = sfmt (txt % ".o") projectName
-      let exeFile :: FilePath = sfmt txt projectName
+      let asmFile :: FilePath = sfmt ("./" % txt % ".asm") projectName
+      let oFile :: FilePath = sfmt ("./" % txt % ".o") projectName
+      let exeFile :: FilePath = sfmt ("./" % txt) projectName
 
       putStrLn $ sfmt ("Generating " % str) asmFile
       C.writeX86_64_LinuxAsm asmFile program flags
@@ -92,6 +92,7 @@ compile fileName flags = do
         else do
           -- Compile fasm
           Console.runCmdEchoed "fasm" ["-m", "524288", asmFile, exeFile] True
+          Console.runCmdEchoed "chmod" ["+x", exeFile] True
 
       pure exeFile
 
